@@ -1,0 +1,462 @@
+\section{Experiments}
+\subsection{Dataset}
+% 본 논문에서는 제안된 기법을 CarDS(Car Dataset Security) 차량용 이더넷(AE) 데이터셋~\cite{hellemans2025cards}을 사용하여 평가합니다. 우리가 알기로 이 데이터셋은 시뮬레이션 환경이 아닌 실제 상용 차량에서 캡처한 AE 트래픽을 포함하는 최초로 공개된 실제 차량 인체인 네트워크 데이터셋입니다. CarDS는 10개의 내부 CAN 버스와 6개의 AE 피어투피어(peer-to-peer) 인터페이스로 구성된 도메인 기반 아키텍처를 갖춘 2020년형 양산 전기차에서 기록되었습니다. 이 인터페이스들은 게이트웨이 ECU(GWE)를 서라운드 뷰, 후방 및 전방 어시스트 카메라, 이더넷 통신 인터페이스, 비상 통신 인터페이스 및 IVI(In-Vehicle Infotainment) 유닛과 연결합니다. 이러한 AE 연결은 VLAN에 의해 가상으로 세그먼트화되어 있습니다. AE 물리 계층은 점대점(point-to-point) 링크만 지원하고 패시브 도청(passive eavesdropping)이 불가능하기 때문에, CarDS의 모든 AE 트레이스는 전용 breakout box를 통해 GWE와 연결된 각 ECU 사이의 온패스 중간자(man-in-the-middle) 위치에서 캡처되었습니다. 모든 CAN 및 AE 인터페이스는 1,$\mu$s의 타임스탬프 정확도로 하드웨어 시간 동기화가 이루어졌습니다.
+We evaluate the proposed method on the Automotive Ethernet (AE) portion of CarDS~\cite{hellemans2025cards}, a recently published, real-vehicle in-vehicle network dataset that, to our knowledge, is the first publicly available dataset to include AE traffic captured from a real commercial vehicle rather than a simulated testbed. CarDS was recorded from a 2020 production electric vehicle with a domain-oriented architecture comprising 10 internal CAN buses and 6 AE peer-to-peer interfaces, connecting the gateway ECU (GWE) to the surround-view, rear-view, and front-assist cameras, an Ethernet communication interface, an emergency communication interface, and the In-Vehicle Infotainment (IVI) unit. These AE connections are virtually segmented by VLANs. Because the AE physical layer supports only point-to-point links and passive eavesdropping is infeasible, all AE traces in CarDS were captured from an on-path man-in-the-middle position between the GWE and each connected ECU, established via a dedicated breakout box. All CAN and AE interfaces are hardware time-synchronized to a timestamp accuracy of 1\,$\mu$s.
+
+% CarDS의 AE 공격 트레이스는 다음 3단계 침투 테스트 방법론을 기반으로 구성됩니다. (a) \emph{준비 단계(preparation)}: 공격자가 다양한 VLAN 구성(태그 없음, VLAN~3, VLAN~4) 하에서 MAC 및 IP 스푸핑을 통해 타깃 ECU를 사칭합니다. (b) \emph{정찰 단계(reconnaissance)}: 정적 필터링 규칙을 우회하면서 개방된 서비스를 열거하기 위해 다양한 포트 범위를 갖는 TCP SYN, ACK, FIN 포트 스캔을 수행합니다. (c) \emph{익스플로잇 실행 단계(exploit execution)}: 보호되지 않은 후방 카메라 스트림에 대한 RTP 프레임 교체 공격, IVI에 대한 HTTP REST API 크래시 공격, 네트워크 계층에서의 ICMPv6ND 이웃 스푸핑(neighbor-spoofing) 공격을 수행합니다. 본 평가에서는 정찰 단계의 Nmap 스캐닝 공격(준비 단계의 MAC/IP 스푸핑 결합)과 익스플로잇 단계의 RTP 스트림 교체 공격에 집중합니다. 전체 패킷 대비 공격 패킷 비율이 0.01\% 이하인 4개 파일(\path{IVI-Nmap_sA_p49000_50000}, \path{IVI-Nmap_sF_p49000_50000}, \path{IVI-Nmap_sS_p1_1024}, \path{IVI-RestAPI_Crash_vlan3})은 평가에서 제외합니다. AE 트래픽에 대한 그라운드 트루스(Ground-truth) 레이블은 데이터셋 저자가 pcapng 파일에 직접 임베딩한 MAC 주소 기반 패킷 주석(packet comments) 형태로 제공되며, 이를 전처리 과정에서 파싱하여 활용합니다.
+CarDS's AE attack traces are organized around a three-stage penetration-testing methodology: (a) \emph{preparation}, in which the attacker impersonates a target ECU through MAC and IP spoofing under different VLAN configurations (no tag, VLAN~3, VLAN~4); (b) \emph{reconnaissance}, comprising TCP SYN, ACK, and FIN port scans with varied port ranges to enumerate open services while evading static filtering rules; and (c) \emph{exploit execution}, comprising an RTP frame-replacement attack on the unprotected rear-view camera stream, an HTTP REST API crash on the IVI, and an ICMPv6ND neighbor-spoofing attack at the network layer. Our evaluation focuses on the reconnaissance-stage Nmap scanning attacks (combined with MAC/IP spoofing from the preparation stage) and the exploit-stage RTP stream replacement attack. Four files are excluded from evaluation due to an anomalously low attack packet ratio (at or below 0.01\% of total packets): \path{IVI-Nmap_sA_p49000_50000}, \path{IVI-Nmap_sF_p49000_50000}, \path{IVI-Nmap_sS_p1_1024}, and \path{IVI-RestAPI_Crash_vlan3}. Ground-truth labels for AE traffic are provided by the dataset authors as MAC-address-based packet comments embedded directly in the pcapng files, which we parse during preprocessing.
+
+% 모델의 학습 및 검증을 위해, 대학 테스트 사이트에서 정차, 저속 주행, 후진 주행, 고속 주행 조건 하에서 캡처된 CarDS의 정상(benign) AE 트레이스 39개를 모두 사용합니다. 이는 데이터셋 저자가 보고한 전체 정상 AE 서브셋과 일치합니다. 이를 다양한 주행 시나리오와 차량 상태를 포괄하도록 선택된 31개 파일로 구성된 학습 세트(패킷 5,435,128개, 윈도우 5,435,065개)와 8개 파일로 구성된 고정된 검증 세트(패킷 3,067,177개, 윈도우 3,067,114개)로 분할합니다. 모든 학습 및 검증 데이터는 정상 트래픽($y=0$)으로 레이블링되며, 학습 과정에서는 어떠한 공격 샘플도 사용되지 않습니다.
+For training and validation, we use all 39 benign AE pcapng traces provided by CarDS, captured under standstill, slow-driving, reverse-driving, and fast-driving conditions at a university test site -- matching the full benign AE subset reported by the dataset authors. We partition these into a training set of 31 files (5,435,128 packets; 5,435,065 windows) and a fixed validation set of 8 files (3,067,177 packets; 3,067,114 windows) selected to span diverse driving scenarios and vehicle states. All training and validation data are labeled as normal traffic ($y=0$), and no attack samples are used during training.
+
+% 성능 평가를 위해 23개의 서로 다른 공격 구성을 포함하는 27개의 공격 파일을 사용하며, 이는 두 가지 카테고리로 분류됩니다. (1) \textbf{RTP 스트림 교체 공격}(5개 파일). (2) \textbf{Nmap 기반 네트워크 스캐닝 및 스푸핑 공격}: VLAN~3 및 VLAN~4 환경 하에서 IVI 및 비상 네트워크 세그먼트를 대상으로 수행된 IP 스푸핑, MAC 스푸핑 또는 두 가지 모두가 결합된 SYN, ACK, FIN 스캔으로 구성됩니다(22개 파일). 데이터셋 통계 요약은 Table~\ref{tab:dataset}에 제시되어 있습니다.
+For evaluation, we use 27 attack files spanning 23 distinct attack configurations, organized into two categories: (1) \textbf{RTP stream replacement attacks} (5 files), and (2) \textbf{Nmap-based network scanning and spoofing attacks} comprising SYN, ACK, and FIN scans combined with IP spoofing, MAC spoofing, or both, conducted against the IVI and emergency network segments under VLAN~3 and VLAN~4 (22 files). A summary of the dataset statistics is provided in Table~\ref{tab:dataset}.
+
+\begin{table}[!t]
+\centering
+\caption{CarDS Automotive Ethernet dataset statistics used in this work.}
+\label{tab:dataset}
+\footnotesize
+\begin{tabular}{lrr}
+\toprule
+\textbf{Split} & \textbf{Files} & \textbf{Windows} \\
+\midrule
+Training (normal)           & 31 & 5,435,065 \\
+Validation (normal)         &  8 & 3,067,114 \\
+\midrule
+RTP Stream Replacement      &  5 & -- \\
+Nmap Scanning \& Spoofing   & 22 & -- \\
+\textbf{Total Attack Files} & \textbf{27} & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Experimental Setup}
+\label{sec:experimental_setup}
+\noindent\textbf{Implementation Details.}
+% 제안된 모델은 PyTorch~\cite{pytorch}로 구현되었으며, 검증 재구성 손실을 기반으로 조기 종료(patience = 15 에포크)를 적용하여 최대 50 에포크 동안 학습됩니다. 학습은 NVIDIA GeForce RTX 3070 및 RTX 3080 GPU에서 수행됩니다. 모델은 오직 정상 트래픽만으로 학습되며, 학습 과정 어느 단계에서도 레이블된 공격 샘플은 사용되지 않습니다. 입력 표현 및 학습 목적함수는 Section~\ref{sec:methodology}의 정의를 따릅니다(입력 전처리: Eqs.~\ref{eq:delta}--\ref{eq:mask}; 손실 함수: Eq.~\ref{eq:loss}, $\lambda = 5.0$, $p_{\text{mask}} = 0.20$). 하이퍼파라미터의 전체 설정 값은 Table~\ref{tab:hyperparams}에 나열되어 있습니다.
+The proposed model is implemented in PyTorch~\cite{pytorch} and trained for up to 50 epochs with early stopping (patience = 15 epochs) based on validation reconstruction loss. Training is performed on NVIDIA GeForce RTX 3070 and RTX 3080 GPUs. The model is trained exclusively on normal traffic; no labeled attack samples are used at any stage of training. Input representations and the training objective follow the definitions in Section~\ref{sec:methodology}: inputs are preprocessed as specified in Eqs.~\eqref{eq:delta}--\eqref{eq:mask}, and the model is optimized using the asymmetric masked reconstruction loss (Eq.~\eqref{eq:loss}) with $\lambda = 5.0$ and $p_{\text{mask}} = 0.20$. The core architecture and training hyperparameters are listed in Table~\ref{tab:hyperparams}.
+
+\noindent\textbf{Evaluation Protocol.}
+% 각 테스트 파일은 스트라이드 1의 슬라이딩 윈도우 추론을 사용하여 독립적으로 평가됩니다. 윈도우 레벨 레이블은 any-positive 관례를 따릅니다: 윈도우 내 패킷 중 하나라도 악성이면 해당 윈도우를 이상치로 레이블링합니다. 각 공격 파일에 대해 정밀도, 재현율, F1-score를 보고합니다. 각 공격 카테고리 내에서는 파일별 결과를 매크로 평균으로 집계한 소계를 제시하며, 27개 전체 공격 파일의 예측을 통합하여 산출한 전체 마이크로 평균 지표도 함께 보고합니다. 윈도우 레벨 F1-score를 주요 평가 지표로 채택하며, 정밀도와 재현율은 트레이드오프 분석을 위해 별도로 보고합니다. AUROC와 AUPRC는 임계값에 독립적인 지표로서 추가 보고됩니다. 이상 점수 및 임계값 결정 방식은 Section~\ref{sec:scoring}(Eqs.~\ref{eq:score}--\ref{eq:threshold})에 정의되어 있습니다. 본 평가에서는 정상 검증 셋 이상 점수 분포의 99번째 백분위수($P_{99}$)를 탐지 임계값 $\tau$로 사용하며, 이 선택의 근거는 Section~\ref{sec:threshold}에서 다룹니다.
+Each test file is evaluated independently using sliding-window inference with stride 1. Window-level labels follow the any-positive convention: a window is labeled anomalous if at least one of its constituent packets is malicious. We report precision, recall, and F1-score for each attack file. Within each attack category, per-file results are summarized as a macro-averaged subtotal; an overall micro-averaged score is additionally computed by pooling predictions across all 27 attack files. The window-level F1-score serves as the primary metric, with precision and recall reported separately to characterize the precision--recall tradeoff. AUROC and AUPRC are additionally reported as threshold-independent metrics. Anomaly scoring and threshold determination follow the formulations in Section~\ref{sec:scoring} (Eqs.~\eqref{eq:score}--\eqref{eq:threshold}): a window is flagged as anomalous if its anomaly score $s(\mathbf{X})$ exceeds $\tau$, which is calibrated solely on the benign validation set. In this evaluation, $\tau$ is set to the 99th percentile of the validation anomaly score distribution, denoted $P_{99}$; the rationale for this choice is discussed in Section~\ref{sec:threshold}.
+
+\begin{table}[!t]
+\centering
+\caption{Architecture and training hyperparameters used for the proposed method model.}
+\label{tab:hyperparams}
+\footnotesize
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{ll}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} \\
+\midrule
+Window size ($N$)                       & 64 packets \\
+Byte length ($L$)                       & 128 bytes \\
+Model dimension ($d_{\text{model}}$)    & 128 \\
+Transformer layers                      & 3 \\
+Attention heads                         & 4 \\
+FFN hidden dimension                    & 256 \\
+CNN filter progression                  & [128, 128, 128, 64] \\
+Positional encoding                     & Time-aware (IPI-based) \\
+Dropout rate ($p_{\text{drop}}$)        & 0.1 \\
+Mask probability ($p_{\text{mask}}$)    & 0.20 \\
+Masked loss weight ($\lambda$)          & 5.0 \\
+Optimizer                               & AdamW \\
+Learning rate ($\eta$)                  & $1 \times 10^{-4}$ \\
+Minimum learning rate                   & $1 \times 10^{-6}$ \\
+LR schedule                             & Cosine annealing \\
+Weight decay                            & $1 \times 10^{-4}$ \\
+Gradient clipping                       & 1.0 \\
+Batch size                              & 64 \\
+Max epochs ($E$)                        & 50 \\
+Early stopping patience                 & 15 epochs \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Main Results}
+\label{sec:main_results}
+% Table~\ref{tab:main_results}는 p99 임계값 기준, 전체 27개 공격 파일에 대한 시간 인지형 위치 인코딩 기반의 제안된 이중 스트림 마스크 오토인코더의 탐지 성능을 보여줍니다. 전체 마이크로 평균 F1-score는 0.9802(정밀도: 0.9866, 재현율: 0.9738)를 달성했으며(Table~\ref{tab:main_results}), AUROC 0.9976, AUPRC 0.9974를 기록했습니다(Table~\ref{tab:rocprc}). 카테고리별 \emph{소계(Subtotal)} 행은 각 카테고리 내 파일들의 매크로 평균인 반면, \textbf{전체(Overall)} 행은 27개 파일 전체에 대한 마이크로 평균입니다.
+Table~\ref{tab:main_results} reports the detection performance of the proposed dual-stream masked autoencoder with time-aware positional encoding across all 27 attack files at the $P_{99}$ threshold. The method achieves an overall micro-averaged F1-score of 0.9802 (Precision: 0.9866, Recall: 0.9738; Table~\ref{tab:main_results}), with AUROC of 0.9976 and AUPRC of 0.9974 (Table~\ref{tab:rocprc}). The per-category \emph{Subtotal} rows report the macro-average across files within each category, while the \textbf{Overall} row is micro-averaged across all 27 files; the two aggregation schemes are not directly comparable (see Table~\ref{tab:main_results} caption).
+
+\begin{table*}[!t]
+\centering
+\caption{Detection results of the proposed method (Transformer-CNN with time-aware positional encoding) across 27 attack files (threshold: $P_{99}$).
+Attack files are grouped by attack category. RD: Reverse Driving, SD: Slow Driving, SS: Standstill.
+P: Precision, R: Recall, F1: F1-Score. \emph{Subtotal} rows report the macro-average (simple mean) of per-file P/R/F1 within each category; the \textbf{Overall} row reports the micro-average obtained by pooling predictions across all 27 files before computing P/R/F1. These two aggregation schemes are not directly comparable, as macro-averaging weights every file equally regardless of its window count, whereas micro-averaging weights every window equally.}
+\label{tab:main_results}
+\footnotesize
+\adjustbox{max width=\textwidth}{%
+\begin{tabular}{llccc}
+\toprule
+\textbf{Attack Category} & \textbf{Attack File} & \textbf{P} & \textbf{R} & \textbf{F1} \\
+\midrule
+\multirow{5}{*}{RTP Stream Replacement}
+ & RD-RearCamera-ReplaceRTP\_1                    & 0.9258 & 0.8973 & 0.9113 \\
+ & RD-RearCamera-ReplaceRTP\_2                    & 0.8630 & 0.8266 & 0.8444 \\
+ & RD-RearCamera-ReplaceRTP\_3                    & 0.9297 & 0.8103 & 0.8659 \\
+ & SD-RearCamera-ReplaceRTP                       & 0.8710 & 0.8060 & 0.8372 \\
+ & SS-RearCamera-ReplaceRTP                       & 0.9283 & 0.8410 & 0.8825 \\
+\cmidrule{2-5}
+ & \textit{Subtotal (macro)}                      & \textit{0.9036} & \textit{0.8362} & \textit{0.8683} \\
+\midrule
+\multirow{3}{*}{Nmap ACK Scan + MAC Spoofing}
+ & IVI-Nmap\_sA\_MACSpoofing\_1                  & 0.9982 & 0.9975 & 0.9979 \\
+ & IVI-Nmap\_sA\_MACSpoofing\_2                  & 0.9996 & 0.9984 & 0.9990 \\
+ & IVI-Nmap\_sA\_MACSpoofing\_3                  & 1.0000 & 0.9965 & 0.9982 \\
+\cmidrule{2-5}
+ & \textit{Subtotal (macro)}                      & \textit{0.9993} & \textit{0.9975} & \textit{0.9984} \\
+\midrule
+\multirow{4}{*}{Nmap SYN Scan + IP Spoofing}
+ & Emergency-Nmap\_sS\_IPSpoofing\_1             & 0.9969 & 0.9152 & 0.9543 \\
+ & Emergency-Nmap\_sS\_IPSpoofing\_2             & 0.9864 & 0.9288 & 0.9567 \\
+ & Emergency-Nmap\_sS\_IPSpoofing\_3             & 0.9937 & 0.9471 & 0.9698 \\
+ & Emergency-Nmap\_sS\_IPSpoofing\_4             & 0.9956 & 0.9455 & 0.9699 \\
+\cmidrule{2-5}
+ & \textit{Subtotal (macro)}                      & \textit{0.9931} & \textit{0.9342} & \textit{0.9627} \\
+\midrule
+\multirow{2}{*}{Nmap SYN Scan + MAC Spoofing}
+ & IVI-Nmap\_sS\_MACSpoofing\_1                  & 0.9981 & 0.9986 & 0.9984 \\
+ & IVI-Nmap\_sS\_MACSpoofing\_2                  & 0.9996 & 0.9990 & 0.9993 \\
+\cmidrule{2-5}
+ & \textit{Subtotal (macro)}                      & \textit{0.9989} & \textit{0.9988} & \textit{0.9989} \\
+\midrule
+\multirow{3}{*}{Nmap Scan + MAC+IP Spoofing}
+ & IVI-Nmap\_sS\_MACIPSpoofing                   & 0.9940 & 0.9994 & 0.9967 \\
+ & IVI-Nmap\_sS\_MACIPSpoofing\_InvalidIP        & 0.9998 & 0.9976 & 0.9987 \\
+ & Emergency-Nmap\_sS\_p49000\_50000\_MACIPSpoofing & 0.9556 & 0.9103 & 0.9324 \\
+\cmidrule{2-5}
+ & \textit{Subtotal (macro)}                      & \textit{0.9831} & \textit{0.9691} & \textit{0.9759} \\
+\midrule
+\multirow{1}{*}{Nmap FIN Scan + IP Spoofing}
+ & IVI-Nmap\_sF\_p49000\_50000\_IPSpoofing       & 0.9928 & 0.9860 & 0.9894 \\
+\cmidrule{2-5}
+ & \textit{Subtotal (macro)}                      & \textit{0.9928} & \textit{0.9860} & \textit{0.9894} \\
+\midrule
+\multirow{9}{*}{Nmap SYN Scan (Port Range)}
+ & Emergency-Nmap\_sS\_p49000\_50000\_IPSpoofing     & 0.9913 & 0.9228 & 0.9558 \\
+ & Emergency-Nmap\_sS\_p8000\_10000                  & 0.9937 & 0.9298 & 0.9607 \\
+ & IVI-Nmap\_sA\_p49000\_50000\_IPSpoofing           & 0.9948 & 0.9874 & 0.9911 \\
+ & IVI-Nmap\_sS\_p49000\_50000\_IPSpoofing\_1        & 0.9459 & 0.9823 & 0.9638 \\
+ & IVI-Nmap\_sS\_p49000\_50000\_IPSpoofing\_2        & 0.9967 & 0.9935 & 0.9951 \\
+ & IVI-Nmap\_sS\_p49000\_50000\_MACSpoofing\_1       & 0.9657 & 0.9868 & 0.9762 \\
+ & IVI-Nmap\_sS\_p49000\_50000\_MACSpoofing\_2       & 0.9342 & 0.9562 & 0.9451 \\
+ & IVI-Nmap\_sS\_p49000\_50000\_MACSpoofing\_3       & 0.9767 & 0.9756 & 0.9762 \\
+ & IVI-Nmap\_sS\_p49000\_50000\_vlan3                & 0.9584 & 0.9916 & 0.9747 \\
+\cmidrule{2-5}
+ & \textit{Subtotal (macro)}                      & \textit{0.9730} & \textit{0.9696} & \textit{0.9710} \\
+\midrule
+\multicolumn{2}{l}{\textbf{Overall (micro-average)}} & \textbf{0.9866} & \textbf{0.9738} & \textbf{0.9802} \\
+\bottomrule
+\end{tabular}}
+\end{table*}
+
+\noindent\textbf{Nmap-based attacks.}
+% 제안된 방법은 Nmap 기반 스캐닝 및 스푸핑 공격에 대해 카테고리 레벨 F1-score 0.9324에서 0.9993에 이르는 완벽에 가까운 탐지 성능을 보였습니다(Table~\ref{tab:main_results}). SYN 스캔과 MAC 스푸핑이 결합된 공격이 가장 높은 카테고리 레벨 정확도(매크로 F1 = 0.9989)로 탐지되었습니다. 무작위화되거나 스윕(swept)된 포트 스캔 프로브의 특징인 불규칙한 도착 간격으로 인해 고유한 난이도를 가진 포트 범위 스캐닝 서브카테고리에서도 매크로 평균 F1 0.9710을 달성했습니다.
+The proposed method achieves near-perfect detection on Nmap-based scanning and spoofing attacks, with category-level F1-scores ranging from 0.9324 to 0.9993 (Table~\ref{tab:main_results}). Attacks combining SYN scanning with MAC spoofing yield the highest category-level accuracy (macro F1 = 0.9989; Table~\ref{tab:main_results}). The port-range scanning subcategory, which poses inherent difficulty due to the irregular inter-packet timing of randomized and swept port-scan probes, nonetheless achieves a macro-averaged F1 of 0.9710 (Table~\ref{tab:main_results}).
+
+\noindent\textbf{RTP stream replacement attacks.}
+% RTP 스트림 교체 공격 탐지는 카테고리 매크로 평균 F1 0.8683으로 여전히 가장 까다로운 카테고리로 남았습니다(Table~\ref{tab:main_results}). RTP 스트림 교체는 원래 후방 카메라 스트림의 RTP 헤더 구조와 패킷 도착 간격 타이밍을 그대로 유지하면서 주로 비디오 페이로드 콘텐츠만을 변조합니다. 정상 및 주입된 RTP 스트림 모두 고대역폭의 지속적인 페이로드 변동과 유사한 도착 패턴을 보이기 때문에, 정상 트래픽과 이상 트래픽 간의 재구성 오차 마진이 축소됩니다. 그럼에도 불구하고 제안된 방법은 5개의 RTP 교체 파일 전반에 걸쳐 0.8372에서 0.9113 사이의 안정적인 F1-score를 달성했으며(Table~\ref{tab:main_results}), AUPRC 0.9044를 기록했습니다(Table~\ref{tab:rocprc}). 이는 공격이 어떠한 시간적 이상도 도입하지 않는 경우에도 재구성 기반 이상 점수가 의미 있는 판별력을 유지함을 나타냅니다.
+Detection of RTP stream replacement attacks remains the most challenging category, with a category-level macro-averaged F1 of 0.8683 (Table~\ref{tab:main_results}). RTP stream replacement preserves the RTP header structure and the inter-packet timing of the original camera stream, differing primarily in payload content. Since both normal and injected RTP streams exhibit high-bandwidth, continuous payload variation with similar inter-arrival patterns, the reconstruction error margin between normal and anomalous traffic is reduced. The proposed method nonetheless achieves per-file F1-scores between 0.8372 and 0.9113 (Table~\ref{tab:main_results}) and a threshold-independent AUPRC of 0.9044 (Table~\ref{tab:rocprc}), indicating that the reconstruction-based anomaly score retains meaningful discriminability even when the attack introduces no temporal anomalies.
+
+% Figure~\ref{fig:main_bars}는 Table~\ref{tab:main_results}의 카테고리별 F1-score(매크로 평균)를 난이도 순으로 정렬한 바 차트입니다. RTP 스트림 교체 공격은 전체 마이크로 평균(0.9802) 대비 확연히 낮은 이상치로 나타나며, 6개의 Nmap 기반 서브카테고리는 모두 그 위로 조밀하게 군집해 있습니다.
+Figure~\ref{fig:main_bars} shows the category-level macro-averaged F1-scores from Table~\ref{tab:main_results}, sorted from hardest to easiest. RTP stream replacement is a clear outlier below the micro-averaged overall F1 of 0.9802, while all six Nmap-based subcategories cluster tightly above it, confirming the categorical asymmetry described above.
+
+\begin{figure}[]
+\centering
+\includegraphics[width=\columnwidth]{figs/main_results_bars.pdf}
+\caption{Category-level detection F1 (macro-avg within category) for the proposed method, ordered from hardest to easiest. The dashed line marks the overall micro-avg (0.9802).}
+\label{fig:main_bars}
+\end{figure}
+
+\noindent\textbf{Threshold-Independent Evaluation.}
+% 고정 임계값 기준 결과 외에도, 임계값 $\tau$의 선택에 영향을 받지 않고 탐지 성능의 본질적 분리도를 나타내는 ROC 곡선 아래 면적(AUROC)과 정밀도-재현율 곡선 아래 면적(AUPRC)을 추가로 보고합니다. Figure~\ref{fig:roc}와 Figure~\ref{fig:pr}은 각각 제안 기법의 공격 카테고리별 ROC 곡선과 정밀도-재현율 곡선입니다. Table~\ref{tab:rocprc}는 이에 대응하는 구체적인 AUROC 및 AUPRC 수치를 요약한 것입니다.
+To complement the fixed-threshold results above, we additionally report the area under the ROC curve (AUROC) and the area under the precision--recall curve (AUPRC), which characterize detection performance independently of the choice of $\tau$. Figures~\ref{fig:roc_pr}(a) and~\ref{fig:roc_pr}(b) show the ROC and precision--recall curves of the proposed method, aggregated by attack category. Table~\ref{tab:rocprc} summarizes the corresponding AUROC and AUPRC values.
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/roc_curve_proposed.pdf}
+    \caption{ROC curves}
+    \label{fig:roc}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/pr_curve_proposed.pdf}
+    \caption{Precision--recall curves}
+    \label{fig:pr}
+\end{subfigure}
+\caption{ROC curves (a) and precision--recall curves (b) for the proposed method (Transformer-CNN with time-aware positional encoding). Each curve is computed by pooling all predictions within the corresponding attack category (micro-average within category).}
+\label{fig:roc_pr}
+\end{figure*}
+
+\begin{table}[!t]
+\centering
+\caption{AUROC and AUPRC for the proposed method (Transformer-CNN with time-aware positional encoding). Category rows: micro-avg within category; \textbf{Overall}: micro-avg across all 27 files.}
+\label{tab:rocprc}
+\footnotesize
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lcc}
+\toprule
+\textbf{Category} & \textbf{AUROC} & \textbf{AUPRC} \\
+\midrule
+RTP Stream Replacement     & 0.9761 & 0.9044 \\
+Nmap Scanning \& Spoofing  & 0.9998 & 0.9998 \\
+\midrule
+\textbf{Overall (micro)}   & \textbf{0.9976} & \textbf{0.9974} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+% 고정 임계값 결과와 일관되게, Nmap 기반 공격은 AUROC와 AUPRC 모두 완벽에 가까운 수치(각각 0.9998; Table~\ref{tab:rocprc})를 달성했습니다. 이는 임계값 선택과 관계없이 정상 트래픽과 이상 트래픽의 이상 점수 간에 매우 넓은 분리 영역이 존재함을 반영합니다. RTP 스트림 교체 공격은 AUROC 0.9761, AUPRC 0.9044를 기록했으며(Table~\ref{tab:rocprc}), 고정 임계값 기반 F1 결과보다 높은 분리도를 나타냅니다. 이는 이상 점수 자체가 정상 및 이상 트래픽을 일관되게 분리하고 있으나, 최적 임계값 선택에 따라 F1에서의 이득이 제한됨을 시사합니다.
+Consistent with the fixed-threshold results, Nmap-based attacks achieve near-perfect AUROC and AUPRC (0.9998 each; Table~\ref{tab:rocprc}), reflecting a wide margin between normal and anomalous anomaly scores that is robust to the choice of $\tau$. RTP stream replacement attacks attain an AUROC of 0.9761 and an AUPRC of 0.9044 (Table~\ref{tab:rocprc}), indicating stronger separability than the fixed-threshold F1 results alone suggest; the anomaly scores consistently rank attack windows above normal ones, though the F1 gain at any single threshold remains bounded by the intrinsic difficulty of this attack category.
+
+% 풀링된 RTP 정밀도-재현율 곡선(Figure \ref{fig:pr})에서 낮은 재현율 구간에 정밀도가 1.0에서 약 0.70으로 일시적으로 하락했다가 다시 0.95 이상으로 회복되는 국소적인 강하(dip) 구간이 관찰됩니다. 이러한 패턴은 풀링된 곡선의 기저에 있는 5개 RTP 파일 간의 탐지 난이도 차이(heterogeneity) 때문에 발생합니다. 파일별 AUPRC는 0.8386(가장 어려운 파일인 SD-RearCamera-ReplaceRTP)에서 0.9402(가장 쉬운 파일인 RD-RearCamera-ReplaceRTP_1)까지 고르게 분포되어 있습니다. 가장 보수적인 동작 지점(가장 낮은 재현율)에서 상위에 랭크된 예측치들은 정상 트래픽 분포와의 오차 마진이 가장 큰 '가장 쉬운 파일'의 공격 윈도우들로 지배됩니다. 이후 더 어려운 파일들의 공격 윈도우까지 검출하기 위해 임계값을 점진적으로 낮추는 과정에서, 어려운 파일들의 공격 점수 분포 영역으로 진입하기 직전 극소수의 정상 윈도우들이 참 양성(true positives) 사이에 끼어들게 됩니다. 즉, 이는 결정 경계(decision boundary)가 불안정해서가 아니라, 탐지 난이도가 다른 5개 파일을 하나로 풀링하여 곡선을 그리는 과정에서 발생하는 집계 아티팩트입니다. 재현율이 1.0에 도달함에 따라 곡선 끝단이 급격히 떨어지는 현상(정밀도가 약 0.4로 하락)은 클래스 불균형 하에서 가장 검출하기 어려운 마지막 공격 윈도우들까지 모두 잡아내기 위해 임계값을 과도하게 허용함에 따라 다수의 정상 윈도우가 오탐지로 포함되는 일반적인 PR 곡선의 테일 효과(tail effect)를 반영합니다.
+We note a localized dip in the pooled RTP precision--recall curve at low recall (Figure~\ref{fig:roc_pr}(b)), where precision briefly falls from 1.0 to approximately 0.70 before recovering to a plateau above 0.95. This pattern arises from heterogeneity across the five RTP files underlying the pooled curve: per-file AUPRC ranges from 0.8386 (SD-RearCamera-ReplaceRTP, the hardest file) to 0.9402 (RD-RearCamera-ReplaceRTP\_1, the easiest). At the most conservative operating points (lowest recall), the highest-ranked predictions are dominated by attack windows from the easiest file, for which the error margin from normal traffic is largest. As the threshold is lowered to admit predictions from harder files, a small number of normal windows are interleaved with true positives before recall increases far enough into the harder files' score distributions for precision to recover; this is a pooling artifact of combining five files with unequal detection difficulty into a single curve, rather than evidence of an unstable decision boundary. The subsequent decline at high recall (precision falls to approximately 0.4 as recall approaches 1.0) reflects the conventional PR curve tail effect: achieving recall on the single hardest-to-detect windows in the hardest file requires a threshold permissive enough to also admit a substantial number of normal windows.
+
+\subsection{Comparison with Existing Methods}
+\label{sec:baseline}
+% 제안된 방법을 차량용 이더넷 침입 탐지를 위해 제안된 대표적인 기존 접근 방식 3가지와 비교합니다. 공정한 비교를 위해 모든 모델은 동일한 프로토콜 하에 Section~\ref{sec:main_results}에서 기술한 CarDS 데이터셋 상에서 직접 재구현 및 평가되었습니다. 비교 대상은 다음과 같습니다. (1) AVTP 스트림의 재생 공격 탐지를 위해 제안된 본 학술지 게재작 기반의 지도 학습 CNN 탐지기~\cite{jeong2021convolutional}, (2) 수작업 기반의 멀티모달 특징 추출기를 사용하는 차량 내 네트워크용 실시간 비지도 이상 탐지 모델인 AERO~\cite{jeong2023aero}, (3) 차량용 이더넷을 위한 특징 인지형(feature-aware) 준지도 학습 접근 방식~\cite{shibly2023feature}. Table~\ref{tab:baseline}은 각 모델의 학습 패러다임과 특징 표현 방식 및 CarDS 상에서의 탐지 성능을 요약한 것입니다.
+We compare the proposed method against three representative existing approaches for Automotive Ethernet intrusion detection, each faithfully re-implemented on the same CarDS dataset and train/test split: (1) a supervised CNN-based detector originally proposed for replay-attack detection in AVTP streams~\cite{jeong2021convolutional}, published in this journal; (2) AERO, an unsupervised real-time anomaly observer for in-vehicle networks that relies on a hand-crafted, multimodal feature extractor~\cite{jeong2023aero}; and (3) a feature-aware semi-supervised learning approach for Automotive Ethernet~\cite{shibly2023feature}. Because a supervised classifier, a per-capture-calibrated anomaly detector, and a reconstruction-based scorer do not share a common decision rule, each baseline is evaluated at its own native operating point, and we adopt the threshold-independent AUROC as the primary basis for comparison, reporting F1 for reference only. Table~\ref{tab:baseline} summarizes the learning paradigm, feature representation, and detection performance of each baseline alongside the proposed method.
+
+
+% \begin{table}[!t]
+% \centering
+% \caption{Comparison with baseline methods on CarDS (overall micro-average). For methods that output a binary decision rather than a continuous anomaly score, AUROC/AUPRC are not applicable (marked ``--'').}
+% \label{tab:baseline}
+% \footnotesize
+% \adjustbox{max width=\columnwidth}{%
+% \begin{tabular}{lccccc}
+% \toprule
+% \textbf{Method} & \textbf{Paradigm} & \textbf{Feature} & \textbf{Prec} & \textbf{Rec} & \textbf{F1} \\
+% \midrule
+% CNN~\cite{jeong2021convolutional}            & Supervised      & Protocol-specific (AVTP) & & & \\
+% AERO~\cite{jeong2023aero}          & Unsupervised    & Engineered (multimodal)  & & & \\
+% Semi-Sup.~\cite{shibly2023feature} & Semi-supervised & Feature-aware            & & & \\
+% \midrule
+% Proposed                            & Unsupervised    & Raw byte (agnostic)      & 0.9866 & 0.9738 & \textbf{0.9802} \\
+% \bottomrule
+% \end{tabular}}
+% \end{table}
+\begin{table}[!t]
+\centering
+\caption{Comparison with prior Automotive Ethernet IDS on CarDS. AUROC is the primary, threshold-independent metric: per-row F1 is at each method's native operating point and not directly comparable. $\dagger$Approximate reproduction (no reference implementation: $\dagger$Best AUROC over the AERO sweep.}
+\label{tab:baseline}
+\footnotesize
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Method} & \textbf{Paradigm (labels)} & \textbf{Feature} & \textbf{Params} & \textbf{AUROC} & \textbf{F1} \\
+\midrule
+CNN~\cite{jeong2021convolutional}   & Supervised (100\%)     & Protocol-specific (AVTP) & 1.36M & 0.999           & 0.995 \\
+Semi-Sup.~\cite{shibly2023feature}  & Semi-supervised (10\%) & Feature-aware$^\dagger$  & --    & 0.96            & 0.88  \\
+AERO~\cite{jeong2023aero}           & Unsupervised (0\%)     & Engineered (multimodal)  & 289k  & 0.81$^\ddagger$ & 0.32  \\
+\midrule
+Proposed                            & Self-supervised (0\%)  & Raw byte (agnostic)      & 857k  & \textbf{0.9976} & \textbf{0.9802} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[!t]
+\centering
+\caption{Per-category detection AUROC on CarDS (threshold-independent, macro-avg within category); thre proposed method alone remains strong on both. $\dagger$Approximate reproduction.}
+\label{tab:baseline_perattack}
+\footnotesize
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Attack category} & \textbf{CNN} & \textbf{Semi-Sup.$^\dagger$} & \textbf{AERO} & \textbf{Proposed} \\
+                         & {\footnotesize sup.\ (100\%)} & {\footnotesize semi (10\%)} & {\footnotesize unsup.\ (0\%)} & {\footnotesize self (0\%)} \\
+\midrule
+RTP Stream Replacement    & 0.999 & 0.74--0.84 & 0.89       & \textbf{0.976}  \\
+Nmap Scanning \& Spoofing & 0.997 & $\sim$1.00 & 0.50--0.76 & \textbf{0.9998} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+% AUROC 기준 정량 비교: 제안 기법은 완전 지도 CNN에 근접하고 준지도/비지도 baseline을 상회. 카테고리별로 baseline들의 실패 지점이 상호 보완적임(AERO=Emergency/Nmap, semi-sup=RTP).
+On the threshold-independent AUROC, which is directly comparable across the differing operating points, the proposed method (0.9976) essentially matches the fully supervised CNN detector (0.999) despite using no attack labels, and exceeds both the semi-supervised (0.96) and the unsupervised AERO (0.81) baselines. The comparison with AERO---the only other label-free method, and thus the most directly comparable prior art---is the central result: 0.9976 versus 0.81. We foreground AUROC over F1 because the three baselines occupy incompatible operating regimes: the supervised CNN emits near-binary sigmoid scores, AERO is calibrated per capture, and both degrade sharply if forced onto the single global percentile threshold used by the proposed reconstruction score. A per-category breakdown (Table~\ref{tab:baseline_perattack}) further reveals that the two prior detectors fail on \emph{complementary} attack categories: AERO collapses to near-random on Emergency/VLAN\,4 Nmap scans (AUROC 0.50), whereas the semi-supervised classifier---strong on scans owing to its partial labels---is weakest on RTP stream replacement (AUROC 0.74--0.84). The proposed method is the only label-free approach that remains strong on both categories (RTP 0.976, Nmap 0.9998).
+
+
+
+% 베이스라인 모델 중 AERO는 레이블 요구 조건 측면에서 제안 기법과 가장 직접적으로 비교 가능한 비지도 학습 기반 모델입니다. 그러나 AERO는 원시 패킷 바이트를 그대로 사용하는 대신, 프로토콜 도메인 지식이 개입된 멀티모달 특징을 별도로 정의해 추출해야 합니다. 결과적으로 제안 기법은 본 비교군 중 레이블링된 공격 데이터와 프로토콜 특화 특징 엔지니어링 모두를 요구하지 않는 유일한 방식이며, AERO의 높은 레이블 효율성과 원시 바이트 기반 모델의 프로토콜 무관 설계를 성공적으로 결합했습니다.
+Among the baselines, AERO is the only other unsupervised method, making it the most directly comparable in terms of label requirements; however, it relies on a feature extractor that constructs protocol-informed multimodal features rather than operating on raw packet bytes. The proposed method is therefore, to our knowledge, the only approach in this comparison that requires neither labeled attack data nor protocol-specific feature engineering, combining the label-efficiency of AERO with the protocol-agnostic design of raw-byte approaches.
+
+\subsection{Ablation Study}
+\label{sec:ablation}
+% 소거 연구는 두 단계로 설계되어 각 설계 축의 기여도를 독립적으로 평가합니다. 1단계(Section \ref{sec:arch_ablation}--\ref{sec:bytelen_ablation}): 위치 인코딩을 기존 사인파형 방식(수식 \ref{eq:posenc})으로 고정한 채 스트림 아키텍처 및 입력 바이트 길이를 변화시켜 최적 백본 구성을 식별합니다. 2단계(Section \ref{sec:pe_ablation}): 1단계에서 검증된 백본(Trans-CNN, 128바이트)을 고정한 채 사인파형 인코딩과 제안된 시간 인지형 위치 인코딩(수식 \ref{eq:timepe})을 비교하여 위치 인코딩의 독립적 기여도를 규명합니다. 이 두 단계 설계는 두 설계 축이 서로 교란하지 않도록 직교성을 보장합니다. 최종 제안 기법은 두 단계 모두에서 최적으로 식별된 구성, 즉 시간 인지형 위치 인코딩을 적용한 Trans-CNN의 결합입니다.
+The ablation study follows a two-stage design to evaluate each architectural choice independently. In Stage~1 (Sections~\ref{sec:arch_ablation}--\ref{sec:bytelen_ablation}), the positional encoding is fixed to the conventional sinusoidal scheme (Eq.~\ref{eq:posenc}) while the stream architecture and input byte length are varied to identify the optimal backbone configuration. In Stage~2 (Section~\ref{sec:pe_ablation}), the architecture is fixed to the validated backbone and the sinusoidal scheme is compared against the proposed time-aware positional encoding (Eq.~\ref{eq:timepe}). This two-stage design keeps the two design axes orthogonal: the backbone comparison in Stage~1 is not confounded by the PE choice, and the PE comparison in Stage~2 isolates the PE contribution on a fixed, validated architecture. The final proposed method --- Transformer-CNN with time-aware positional encoding --- is the combination identified as optimal across both stages.
+
+\subsubsection{Stage 1: Stream Architecture}
+\label{sec:arch_ablation}
+% Table~\ref{tab:ablation_arch}는 mean_p97 임계값 조건에서 콘텐츠 스트림에 사인파형 위치 인코딩을 적용한 네 가지 스트림 아키텍처의 성능을 비교합니다. \textbf{Content-only}는 델타 스트림 없이 원시 바이트 콘텐츠에 트랜스포머 스트림만 단독으로 사용합니다. \textbf{CNN-CNN}은 콘텐츠 입력에 적용되는 트랜스포머 스트림을 두 번째 잔차 CNN 인코더로 대체합니다. \textbf{Trans-Trans}는 델타 입력에 적용되는 CNN 스트림을 두 번째 트랜스포머 인코더로 대체합니다. \textbf{Trans-CNN (backbone)}은 본 섹션에서 검증하고자 하는 핵심 이중 스트림 백본 아키텍처로, 여기에 후술할 시간 인지형 위치 인코딩(Section \ref{sec:pe_ablation})이 결합되면 Section~\ref{sec:main_results}에서 보고된 최종 제안 기법이 완성됩니다. 추가로, tshark~\cite{tshark}를 통해 추출한 RTP 헤더 필드를 추가 인코딩 스트림으로 처리하여 제안 백본을 확장한 프로토콜 보완 모델인 \textbf{Trans-CNN + RTP Header}를 포함했습니다. 이 변형 모델은 탐지 성능의 프로토콜 의존적 상한선(upper bound) 역할을 합니다.
+Table~\ref{tab:ablation_arch} compares four stream architecture configurations at the $P_{97}$ threshold, all using sinusoidal positional encoding for the content stream. \textbf{Content-only} uses only the Transformer stream on raw byte content without the delta stream. \textbf{CNN-CNN} replaces the Transformer stream with a second residual CNN encoder applied to the content input. \textbf{Transformer-Transformer} replaces the CNN stream with a second Transformer encoder applied to the delta input. \textbf{Transformer-CNN (backbone)} is the dual-stream architecture validated in this section, which is subsequently combined with the proposed time-aware positional encoding in Section~\ref{sec:pe_ablation}. Additionally, we include \textbf{Transformer-CNN + RTP Header}, which augments the Transformer-CNN(backbone) with RTP header fields extracted via tshark~\cite{tshark}, processed as an additional protocol-specific feature stream. Parsing any protocol field in this way is expected to raise detection accuracy for the corresponding attack type, but doing so moves away from the protocol-agnostic design goal central to this work. This variant therefore serves only as a protocol-dependent upper bound on detection performance, not as a candidate for the proposed method.
+
+\begin{table}[!t]
+\centering
+\caption{Ablation study: stream architecture variants (threshold: $P_{97}$ for all). T: Transformer, C: CNN. Overall F1: micro-avg (all 27 files); RTP/Nmap F1: macro-avg within category. $\dagger$: Trans-CNN (backbone) augmented with RTP header fields via protocol-specific parsing.}
+\label{tab:ablation_arch}
+\small
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lccc}
+\toprule
+\multirow{2}{*}{\textbf{Variant}} & \multicolumn{3}{c}{\textbf{F1-score}} \\
+\cmidrule(l){2-4}
+ & Overall & RTP & Nmap \\
+\midrule
+Content-only                          & 0.9215 & 0.0205 & 0.9481 \\
+CNN-CNN                                & 0.9601 & 0.7124 & 0.9488 \\
+Trans-Trans                            & 0.9577 & 0.7078 & 0.9508 \\
+\shortstack[l]{Trans-CNN (backbone)} & \textbf{0.9753} & \textbf{0.8468} & \textbf{0.9540} \\
+\midrule
++RTP Hdr$^\dagger$                     & 0.9782 & 0.8774 & 0.9517 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+
+% 카테고리별 분석 결과 아키텍처 선택이 두 공격 유형에 다르게 영향을 미침을 확인했습니다(Table~\ref{tab:ablation_arch}). Content-only 변형 모델은 합리적인 전체 F1 0.9215를 달성했지만 RTP F1이 0.0205에 불과하여, 델타 스트림 없이는 RTP 스트림 교체를 거의 탐지하지 못함을 나타냅니다. 반면 이 모델의 Nmap F1(0.9481)은 경쟁력 있는 수준을 유지하여, 원시 바이트 콘텐츠만으로도 스캐닝 및 스푸핑 탐지에는 충분한 판별 신호가 있음을 보여줍니다. 이중 스트림 변형 모델들은 RTP F1에서 현저한 개선을 보이며, CNN-CNN(0.7124)과 Trans-Trans(0.7078) 모두 Content-only 대비 크게 향상되었습니다. Trans-CNN은 가장 높은 RTP F1 0.8468을 달성하여 프로토콜 무관 설정 중 최고 성능을 기록했습니다. Nmap F1은 모든 이중 스트림 구성에서 유사한 수준(0.9488--0.9540)이며, 델타 스트림이 존재하면 아키텍처 선택이 스캐닝 탐지에 미치는 영향은 제한적임을 나타냅니다.
+The category-level breakdown reveals that architecture choices affect the two attack types differently (Table~\ref{tab:ablation_arch}). The content-only variant achieves an overall F1 of 0.9215 but an RTP F1 of only 0.0205, indicating that without the delta stream the model is essentially unable to detect RTP stream replacement. Its Nmap F1 (0.9481) remains competitive, suggesting that raw byte content alone provides sufficient discriminative signal for scanning and spoofing detection. The dual-stream variants substantially improve RTP detection: CNN-CNN (RTP F1 = 0.7124) and Transformer-Transformer (RTP F1 = 0.7078) both represent large gains over content-only, while Transformer-CNN achieves the highest RTP F1 of 0.8468 among protocol-agnostic configurations. Nmap F1 is similar across all dual-stream variants (0.9488--0.9540), indicating that the architecture choice has limited impact on scanning detection once a delta stream is present.
+
+% 프로토콜을 인지하는 Trans-CNN + RTP Header 변형 모델은 mean_p97 기준 백본 모델보다 소폭 더 높은 0.9782의 전체 F1-score를 보였으며, 성능 향상은 주로 RTP 스트림 교체 공격(소계 F1: 백본 0.8468 대비 0.8774)에 집중되었습니다. 명시적인 RTP 헤더 특징이 스트림 교체 탐지에 매우 직결되는 패킷별 시퀀스 번호 및 페이로드 유형 식별자를 직접 전달하므로 이러한 격차는 자연스러운 결과입니다. 그러나 이 변형 모델은 tshark 기반의 별도 프로토콜 파싱이 고정적으로 요구되므로, 실제 차량 내에서 RTP를 전송하는 세그먼트로만 적용 범위가 극도로 제한됩니다. 주목할 만한 점은, 최종 제안 기법(Trans-CNN 백본에 시간 인지형 위치 인코딩 결합, Section \ref{sec:pe_ablation})의 경우 자체 최적 동작 지점(mean_p99)에서 0.9802의 전체 F1-score를 달성하여, 완전한 프로토콜 무관 상태를 유지하면서도 명시적 헤더 정보를 활용한 상한선 모델의 성능마저 추월했다는 점입니다(단, 이 RTP Header 변형 모델은 전체 임계값 스윕 평가를 거치지 않았으므로 이 비교는 절대적인 통제 환경 기준이 아닌 지표적인 수치 비교로 해석되어야 합니다).
+The protocol-aware Transformer-CNN + RTP Header variant achieves a marginally higher overall F1 of 0.9782 (at $P_{97}$) than the sinusoidal-PE backbone, with the improvement concentrated on RTP stream replacement attacks (subtotal F1: 0.8774 vs. 0.8468 for the backbone). This gap is expected, as explicit RTP header features directly encode per-packet sequence numbers and payload type identifiers that are highly discriminative for stream replacement detection. However, this variant requires tshark-based protocol parsing, limiting its applicability to RTP-carrying network segments. Notably, the final proposed method (Transformer-CNN backbone with time-aware positional encoding, Section~\ref{sec:pe_ablation}) achieves an overall F1 of 0.9802 at its own selected operating point ($P_{99}$), exceeding even this protocol-dependent upper bound while remaining fully protocol-agnostic; we did not re-evaluate the RTP Header variant across the full threshold sweep, so this comparison should be interpreted as indicative rather than a controlled comparison at matched operating points.
+
+\subsubsection{Stage 1: Input Byte Length}
+\label{sec:bytelen_ablation}
+Table~\ref{tab:ablation_bytes} compares three input byte length configurations: 64, 128, and 256 bytes per packet, using the Transformer-CNN backbone with sinusoidal positional encoding.
+
+\begin{table}[!t]
+\centering
+\caption{Ablation study: input byte length (Transformer-CNN backbone, sinusoidal PE). Each variant evaluated at its own best-overall-F1 threshold. Overall F1: micro-avg (all 27 files); RTP/Nmap F1: macro-avg within category.}
+\label{tab:ablation_bytes}
+\small
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lcccc}
+\toprule
+\multirow{2}{*}{\textbf{Byte Length ($L$)}} & \multirow{2}{*}{\textbf{Threshold}} & \multicolumn{3}{c}{\textbf{F1-score}} \\
+\cmidrule(l){3-5}
+ & & Overall & RTP & Nmap \\
+\midrule
+64 bytes             & $P_{99}$ & 0.9161 & 0.0158 & 0.9273 \\
+128 bytes (adopted)  & $P_{97}$ & \textbf{0.9753} & \textbf{0.8468} & \textbf{0.9540} \\
+256 bytes            & $P_{95}$ & 0.1648 & 0.5588 & 0.0121 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+% 카테고리별 분석 결과, 바이트 길이가 두 공격 유형에 반대 방향으로 영향을 미침을 확인했습니다(Table~\ref{tab:ablation_bytes}). 64바이트 설정은 전체 F1 0.9161과 경쟁력 있는 Nmap F1 0.9273을 달성하지만 RTP F1은 0.0158로 붕괴합니다. 이더넷, IP, UDP, RTP 헤더를 합산하면 약 54바이트를 차지하므로 64바이트 절단점에서 RTP 페이로드에 할당되는 공간은 10바이트 미만에 불과하며, 이는 정상 카메라 스트림과 주입된 비디오 콘텐츠를 구분하기에 충분하지 않습니다. 256바이트 설정은 반대의 실패 양상을 보입니다: RTP F1은 0.5588이지만 Nmap F1은 0.0121로 극도로 낮습니다. CarDS 데이터셋에는 256바이트보다 짧은 패킷이 많아, 광범위한 제로 패딩 영역이 발생하고 정상 트래픽의 재구성 오차 분포가 부풀려집니다. 그 결과 최적 임계값($\tau = 0.022453$, $P_{95}$)이 128바이트 설정($\tau = 0.000466$, $P_{97}$) 대비 47배 이상 높아져, 소규모 Nmap 패킷 대부분이 탐지 임계값 아래로 밀려납니다. 128바이트 설정은 두 실패 양상을 모두 피하며, 이더넷, IP, 트랜스포트 헤더를 온전히 포착하면서 제로 패딩을 최소화하여 기본 설정으로 채택됩니다.
+The category-level breakdown reveals that byte length affects the two attack types in opposite directions (Table~\ref{tab:ablation_bytes}). The 64-byte configuration achieves an overall F1 of 0.9161 and a competitive Nmap F1 of 0.9273, but its RTP F1 collapses to 0.0158. Combined Ethernet, IP, UDP, and RTP headers occupy approximately 54 bytes, leaving fewer than 10 bytes of RTP payload at a 64-byte truncation point --- insufficient to distinguish injected video content from normal camera frames. The 256-byte configuration shows the opposite failure: RTP F1 reaches 0.5588, but Nmap F1 degrades to 0.0121. In the CarDS dataset, many packets are shorter than 256 bytes, producing extensive zero-padded regions that inflate the normal-traffic reconstruction error distribution. The resulting best-available threshold ($\tau = 0.022453$ at $P_{95}$) is over 47$\times$ higher than for 128 bytes ($\tau = 0.000466$ at $P_{97}$), causing the model to miss the majority of small-footprint Nmap packets. The 128-byte configuration avoids both failure modes, capturing Ethernet, IP, and transport headers in full while minimizing zero-padding, and is adopted as the default configuration.
+
+\subsubsection{Stage 2: Positional Encoding: Sinusoidal vs. Time-Aware}
+\label{sec:pe_ablation}
+% Stage 1 소거 연구(Section \ref{sec:arch_ablation}--\ref{sec:bytelen_ablation})에서 사인파형 위치 인코딩을 고정한 채 Trans-CNN(128바이트)이 최적 백본임을 검증했습니다. Stage 2인 본 섹션에서는 이 검증된 백본을 고정하고, 두 위치 인코딩 방식만을 비교합니다. (i) Stage 1의 제어 변수로 사용된 사인파형 위치 인코딩(수식 \ref{eq:posenc}) 대 (ii) 제안된 시간 인지형 위치 인코딩(수식 \ref{eq:timepe}). 두 변형 모델은 Trans-CNN 백본을 공유하며 위치 인코딩 방식만 다릅니다. 시간 인지형 방식은 콘텐츠 스트림의 위치 신호를 패킷의 단순 서수(ordinal rank)가 아닌, 캡처 시점의 실제 패킷 간 간격(IPI)에 조건화합니다.
+Having established Transformer-CNN with 128-byte input as the optimal backbone (Sections~\ref{sec:arch_ablation}--\ref{sec:bytelen_ablation}), Stage~2 fixes the architecture and varies only the positional encoding scheme. We compare (i) the sinusoidal positional encoding (Eq.~\ref{eq:posenc}) used as the fixed baseline throughout Stage~1 against (ii) the proposed time-aware positional encoding (Eq.~\ref{eq:timepe}). Both variants share the identical Transformer-CNN backbone; the only difference is that the time-aware scheme conditions the content stream's positional signal on the inter-packet interval (IPI) recorded at capture time, rather than on packet rank.
+
+% 두 위치 인코딩 방식은 정상 트래픽에 대해 완전히 다른 형태의 재구성 오차 분포를 유도하므로, 각 모델이 최적의 성능을 내는 임계값 지점 역시 크게 다릅니다(사인파형: mean_p97, $\tau = 0.000466$, 시간 인지형: mean_p99, $\tau = 0.001105$). 따라서 임계값 독립적 지표뿐만 아니라, 각 모델이 고유하게 도출한 경험적 최적 작동 지점에서의 고정 임계값 성능을 함께 비교하는 것이 공정합니다. Table~\ref{tab:ablation_pe}는 이 비교 결과를 나타냅니다.
+Because the two encoding schemes induce different reconstruction-error distributions on normal traffic, their respective optimal thresholds differ substantially (sinusoidal: $P_{97}$, $\tau = 0.000466$; time-aware: $P_{99}$, $\tau = 0.001105$); we therefore compare both variants at their own empirically selected operating points, in addition to threshold-independent metrics. Table~\ref{tab:ablation_pe} reports this comparison.
+
+\begin{table}[!t]
+\centering
+\caption{Ablation study: Comparing the conventional sinusoidal positional encoding (baseline) against the proposed time-aware positional encoding, on the fixed Transformer-CNN backbone. Each variant is evaluated at its own best-overall-F1 threshold. Overall F1: micro-avg (all 27 files); RTP/Nmap F1: macro-avg within category.}
+\label{tab:ablation_pe}
+\small
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lcccc}
+\toprule
+\multirow{2}{*}{\textbf{Variant}} & \multirow{2}{*}{\textbf{Threshold}} & \multicolumn{3}{c}{\textbf{F1-score}} \\
+\cmidrule(l){3-5}
+ & & Overall & RTP & Nmap \\
+\midrule
+Sinusoidal (baseline) & $P_{97}$ & 0.9753 & 0.8468 & 0.9540 \\
+Time-aware (proposed) & $P_{99}$ & \textbf{0.9802} & \textbf{0.8683} & \textbf{0.9772} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+% 각 모델의 최적 동작 지점에서 비교하면, 시간 인지형 인코딩은 전체 F1을 0.9753에서 0.9802로($+0.0049$), RTP F1을 0.8468에서 0.8683으로($+0.0215$), Nmap F1을 0.9540에서 0.9772로($+0.0232$) 향상시켰습니다(Table~\ref{tab:ablation_pe}). 두 카테고리 모두에서 일관된 향상이 관찰된다는 점이 주목할 만합니다. 단, 이는 서로 다른 백분위수 임계값($P_{97}$ 대 $P_{99}$)에서의 비교이므로, 임계값 독립적 증거는 Table~\ref{tab:ablation_pe_cat}에서 확인합니다. 실무적 관점에서 더 중요한 차이는 임계값 강건성입니다: Section~\ref{sec:threshold}에서 보이듯, 사인파형 모델은 $P_{97}$을 넘어서는 순간 탐지 성능이 급격히 붕괴하는 반면 시간 인지형 모델은 $P_{99}$까지 안정적으로 유지되어 훨씬 더 넓은 가용 동작 범위를 제공합니다.
+At their respective best operating points, time-aware encoding improves overall F1 from 0.9753 to 0.9802 ($+0.0049$), RTP F1 from 0.8468 to 0.8683 ($+0.0215$), and Nmap F1 from 0.9540 to 0.9772 ($+0.0232$; Table~\ref{tab:ablation_pe}). The consistent improvement across both attack categories is notable. Since the two variants are compared at different percentile thresholds ($P_{97}$ vs.\ $P_{99}$), threshold-independent evidence is provided separately in Table~\ref{tab:ablation_pe_cat}. From a deployment perspective, a practically important advantage of the time-aware scheme is its threshold robustness: as shown in Section~\ref{sec:threshold}, the sinusoidal model's performance collapses sharply beyond $P_{97}$, whereas the time-aware model remains stable through $P_{99}$, offering a substantially wider usable operating range.
+
+% Table~\ref{tab:ablation_pe_cat}은 임계값 척도의 영향을 받지 않아 기저의 표현력 개선 여부를 가장 순수하게 검증할 수 있는 임계값 독립 지표(AUROC/AUPRC)를 사용하여 공격 카테고리별 성능 변화를 세부 분석한 결과입니다.
+Table~\ref{tab:ablation_pe_cat} breaks this comparison down by attack category using threshold-independent metrics (AUROC/AUPRC), which are unaffected by the differing threshold scales of the two variants and therefore provide the cleanest evidence of the underlying representational improvement.
+
+\begin{table}[!t]
+\centering
+\caption{AUROC/AUPRC comparison between the conventional sinusoidal positional encoding (baseline) and the proposed time-aware positional encoding (threshold-independent). Category rows: micro-avg within category; Overall: micro-avg across all 27 files.}
+\label{tab:ablation_pe_cat}
+\small
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lcccc}
+\toprule
+\multirow{2}{*}{\textbf{Category}} & \multicolumn{2}{c}{\textbf{Sinusoidal (baseline)}} & \multicolumn{2}{c}{\textbf{Time-aware (proposed)}} \\
+\cmidrule(lr){2-3}\cmidrule(l){4-5}
+ & AUROC & AUPRC & AUROC & AUPRC \\
+\midrule
+RTP             & 0.9707 & 0.8615 & 0.9761 & \textbf{0.9044} \\
+Nmap            & 0.9999 & 0.9999 & 0.9998 & 0.9998 \\
+\midrule
+\textbf{Overall (micro)} & 0.9975 & 0.9970 & \textbf{0.9976} & \textbf{0.9974} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+% Nmap 기반 공격의 경우, 사인파형 인코딩만으로도 AUROC/AUPRC가 이미 포화 수준($\approx 0.9999$)에 도달해 있었으며 시간 인지형 인코딩 적용 후에도 수치상 변화가 거의 없었습니다. 이는 스캐닝 및 스푸핑 공격에 대해서는 콘텐츠 및 델타 스트림이 원시 바이트 수준에서 이미 충분한 판별 신호를 제공하고 있음을 나타냅니다. 반면, RTP 스트림 교체 공격에서는 뚜렷한 임계값 독립적 성능 개선이 확인되었습니다. AUPRC가 0.8615에서 0.9044로($+0.043$) 향상되었으며, 이는 AUROC 향상 폭($+0.0054$)에 비해 실질적으로 훨씬 더 큰 차이입니다. 이 점이 특히 주목할 만한 이유는, RTP 스트림 교체 공격이 패킷 간 도착 타이밍을 교란하지 않음에도 불구하고(Section~\ref{sec:main_results}), 시간 인지형 위치 인코딩이 임계값 독립적 분리도를 개선시켰기 때문입니다. 가능한 메커니즘은 Section~\ref{sec:discussion}에서 논의합니다.
+Nmap detection is already near-saturated under sinusoidal encoding (AUROC/AUPRC $\approx 0.9999$) and remains essentially unchanged with time-aware encoding, indicating that byte-level scanning and spoofing signatures are already well captured by the content and delta streams without timing information. RTP stream replacement, in contrast, shows a clear improvement in threshold-independent metrics: AUPRC increases from 0.8615 to 0.9044 ($+0.043$), a substantially larger gain than the corresponding AUROC improvement ($+0.0054$), consistent with AUPRC's greater sensitivity to precision--recall tradeoffs under class imbalance. This gain is notable because RTP stream replacement does not itself perturb inter-packet timing (Section~\ref{sec:main_results}), yet the introduction of IPI-based positional conditioning improves separability. Possible mechanisms are discussed in Section~\ref{sec:discussion}.
+
+% Figure~\ref{fig:ablation_bars}는 전체 소거 연구의 전개 과정을 한눈에 요약한 것입니다. 가장 취약한 단일 스트림 설정(content-only)에서 시작하여 이중 스트림 백본의 조합 검증(Section \ref{sec:arch_ablation})을 거쳐, 백본을 넘어 독립적으로 확장된 두 가지 변형인 '프로토콜 전용 RTP 헤더 특징 주입'과 '제안된 시간 인지형 위치 인코딩'의 성과가 차례로 나열되어 있습니다. 각 단계는 전체 F1-score의 단조 증가(monotonic improvement)를 명확히 보여줍니다. 단, 아키텍처 아키텍처의 전환(Content-only $\rightarrow$ Trans-CNN 백본, $+5.4$ 포인트 상승)이 개별 확장 모듈들의 추가 결합에 비해 전체 성능 향상 폭의 압도적인 비중을 차지하고 있음을 확인할 수 있습니다.
+Figure~\ref{fig:ablation_bars} summarizes the full ablation progression in a single view: starting from the weakest single-stream configuration (content-only), through the dual-stream architecture comparison (Section~\ref{sec:arch_ablation}), to the two extensions evaluated beyond the backbone (protocol-aware RTP header features, and the proposed time-aware positional encoding). Each step yields a measurable, monotonic improvement in overall F1, though the architecture choice (content-only $\rightarrow$ Transformer-CNN, $+5.4$ points) accounts for substantially more of the total gain than either extension individually.
+
+\begin{figure}[]
+\centering
+\includegraphics[width=\columnwidth]{figs/ablation_bars.pdf}
+\caption{Overall micro-avg F1 across the ablation progression. The first four bars (Section~\ref{sec:arch_ablation}) use sinusoidal positional encoding at each configuration's own selected threshold; ``+RTP Header'' is evaluated at $P_{97}$ and ``+Time-aware PE'' (the final proposed method) at $P_{99}$ (Section~\ref{sec:threshold}). Bars are therefore not all directly comparable at a matched operating threshold; see Section~\ref{sec:ablation} for details. Note the y-axis does not start at zero.}
+\label{fig:ablation_bars}
+\end{figure}
+
+% 이러한 성능 향상 외에도 시간 인지형 인코딩을 기본 설정으로 채택해야 하는 실무적인 근거가 두 가지 더 존재합니다. 첫째, IPI 특징은 오직 패킷의 캡처 타임스탬프에서만 산출되므로 별도의 상위 프로토콜 파싱 로직을 필요로 하지 않으며, 본 연구의 핵심 가치인 프로토콜 무관 특성을 해치지 않습니다(Section \ref{sec:methodology}). 둘째, 스칼라 값인 IPI를 모델 차원 $d_{\text{model}}$로 매핑하는 두 개의 선형 레이어만 추가되므로, 이로 인해 증가하는 파라미터 수는 전체 모델 크기 대비 무시할 수 있는 수준으로 경량성을 유지합니다(Section \ref{sec:discussion}에서 정량화).
+Two further observations support adopting the time-aware scheme as the default configuration. First, because IPI is derived from packet capture timestamps alone, it requires no upper-layer protocol parsing, preserving the protocol-agnostic property central to this work (Section~\ref{sec:methodology}). Second, the additional parameters introduced by the time-aware projection (two linear layers mapping a scalar IPI to $d_{\text{model}}$) are negligible relative to model size, as quantified in Section~\ref{sec:discussion}.
+
+\subsection{Threshold Sensitivity}
+\label{sec:threshold}
+
+% Table~\ref{tab:threshold}는 두 위치 인코딩 변형 모델에 대해 서로 다른 백분위수 임계값에서의 전체 마이크로 F1-score와 RTP 카테고리 F1-score를 보고합니다. 이는 임계값 변화에 따른 정밀도-재현율 트레이드오프가 어떻게 전개되는지 보여주며, 최종 제안 기법의 기준 작동 임계값으로 왜 mean_p99를 선택했는지에 대한 강력한 당위성을 제공합니다.
+Table~\ref{tab:threshold} reports overall and RTP-category F1-score across percentile thresholds for both positional encoding variants, illustrating how the precision--recall tradeoff evolves as the threshold is varied and motivating the selection of $P_{99}$ for the final proposed method.
+
+\begin{table}[!t]
+\centering
+\caption{Threshold sensitivity, sinusoidal (baseline) vs.\ time-aware (proposed) positional encoding -- both on the fixed Transformer-CNN backbone -- evaluated at five percentile thresholds. Overall F1: micro-avg (all 27 files); RTP F1: macro-avg (5 RTP files).}
+\label{tab:threshold}
+\small
+\adjustbox{max width=\columnwidth}{%
+\begin{tabular}{lcccc}
+\toprule
+\multirow{2}{*}{\textbf{Threshold}} & \multicolumn{2}{c}{\textbf{Sinusoidal (baseline)}} & \multicolumn{2}{c}{\textbf{Time-aware (proposed)}} \\
+\cmidrule(lr){2-3}\cmidrule(l){4-5}
+ & Overall & RTP & Overall & RTP \\
+\midrule
+$P_{95}$   & 0.9625 & 0.7962 & 0.9583 & 0.7510 \\
+$P_{97}$   & \textbf{0.9753} & 0.8468 & 0.9724 & 0.8258 \\
+$P_{99}$   & 0.9322 & 0.2022 & \textbf{0.9802} & \textbf{0.8683} \\
+$P_{99.5}$ & 0.9261 & 0.0649 & 0.9732 & 0.7988 \\
+$P_{99.9}$ & 0.9219 & 0.0207 & 0.9225 & 0.0606 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+% Figure~\ref{fig:threshold}는 Table~\ref{tab:threshold}의 데이터 수치를 시각화한 결과입니다. 두 모델 모두 충분히 극단적인 임계값(mean_p99.9)에 도달하면 궁극적으로 RTP 탐지 기능이 마비되는 현상을 보여주며, 이는 어떤 고정 임계값 설정도 완전 무결할 수는 없음을 확인해 줍니다. 그러나 실제 배포 관점에서 핵심적인 차이는 \emph{이러한 성능 붕괴가 각 모델의 고유 최적 작동 지점으로부터 얼마나 인접한 거리에서 시작되는가}에 있습니다. 기존 사인파형 모델의 RTP 곡선(적색 점선)은 자신의 최적 임계값(mean_p97)을 지나자마자 다음 한 단계(mean_p99)에서 곧바로 수직 낙하하듯 붕괴하여 예유 마진이 전혀 없는 반면, 시간 인지형 모델의 RTP 곡선(녹색 점선)은 자신의 최적점인 mean_p99를 통과한 후에도 mean_p99.5까지 기존 사인파형 모델의 최고 정점 수치와 유사하거나 높은 성능을 유지하다가 두 단계가 지난 mean_p99.9에 이르러서야 본격적인 하락세를 보입니다. 각 변형 모델별로 선택된 기준 작동 지점은 별표($\star$)로 표시되어 있습니다.
+Figure~\ref{fig:threshold} visualizes the data in Table~\ref{tab:threshold}. Both variants eventually collapse on RTP detection at sufficiently extreme thresholds ($P_{99.9}$), confirming that no fixed-threshold scheme is collapse-proof; the practically relevant difference is \emph{where this collapse begins relative to each model's own selected operating point}. The sinusoidal-PE model's RTP curve (red, dashed) collapses immediately beyond its selected threshold ($P_{97}$ $\rightarrow$ $P_{99}$), leaving no safety margin, whereas the time-aware model's RTP curve (green, dashed) remains at or above its sinusoidal counterpart's peak value through $P_{99}$ and only begins declining at $P_{99.5}$, two percentile steps past its selected threshold. The selected operating point for each variant is marked with a star.
+
+\begin{figure}[]
+\centering
+\includegraphics[width=\columnwidth]{figs/threshold_sensitivity.pdf}
+\caption{F1-score as a function of detection threshold for the sinusoidal (baseline) and time-aware (proposed) positional encoding variants, shown for both the overall micro-average and the RTP stream replacement category. Stars mark each variant's selected operating threshold.}
+\label{fig:threshold}
+\end{figure}
+
+% 기존 사인파형 모델은 mean_p97에서 정점(전체 F1 = 0.9753)을 찍은 후 mean_p99로 이동 시 전체 F1이 0.9322로 급감합니다. 더욱 심각한 문제는 이 전체 수치의 감소가 기저의 카테고리별 파멸적 붕괴를 은폐하고 있다는 점입니다. 카테고리별로 세부 분해해 보면, RTP 스트림 교체 탐지 F1-score는 mean_p97의 0.8468에서 mean_p99에 이르러 0.2022로 폭락하며, mean_p99.5(0.0649)와 mean_p99.9(0.0207)에 도달하면 탐지 시스템으로서의 기능을 완전히 상실합니다. 즉, 모델이 RTP 공격의 압도적인 대다수를 전혀 검출하지 못하고 놓치는 전멸 상태에 진입하는 것입니다(mean_p99 이하 구간에서 RTP 평균 재현율은 12% 이하로 떨어지며 mean_p99.9에서는 3% 미만으로 추락). 반면, 동일한 임계값 엄격화 과정에서도 Nmap 기반 공격의 탐지 성능은 거의 타격을 받지 않고 높은 수준(mean_p99에서도 평균 재현율 97% 이상 유지)을 유지합니다. 이는 사인파형 모델의 가용 동작 영역이 극도로 협소하고 공격 카테고리별로 심각하게 비대칭적임을 시사합니다. Nmap 유형의 공격을 억제하기 위해 임계값을 단 1~2%만 보수적으로 올려 잡는 순간, 시스템의 한 축인 RTP 유형의 공격에 대해서는 치명적인 탐지 공백이 발생하는 외줄 타기 형태의 구동 구조를 가집니다.
+The sinusoidal-PE model peaks sharply at $P_{97}$ (overall F1 = 0.9753) and then collapses by $P_{99}$ (overall F1 = 0.9322). This overall decline substantially understates the severity of the underlying failure: broken down by category, RTP stream replacement detection collapses almost completely, from an average F1 of 0.8468 at $P_{97}$ to 0.2022 at $P_{99}$ and further to 0.0649 at $P_{99.5}$ and 0.0207 at $P_{99.9}$ -- a regime in which the model fails to detect the overwhelming majority of RTP attacks (average recall drops to approximately 12\% at $P_{99}$ and below 3\% by $P_{99.9}$) while Nmap-based detection remains comparatively unaffected (average recall remains above 97\% at $P_{99}$). This indicates that the sinusoidal model's usable operating range is narrow and asymmetric across attack categories: a threshold chosen conservatively for Nmap-type attacks is liable to catastrophically fail on RTP-type attacks just one percentile point higher, with no recovery at any of the higher percentiles evaluated.
+
+% 반면 제안된 시간 인지형 모델은 실제 배포 가용 범위 전반에 걸쳐 질적으로 완전히 다른 안정적인 거동을 보입니다. 전체 F1-score는 임계값이 엄격해짐에 따라 오히려 mean_p99까지 지속적으로 \emph{상승}하여 두 모델의 모든 테스트 백분위수 설정을 통틀어 최고 정점인 0.9802를 달성하며, 이 지점에서의 RTP F1-score 역시 0.8683을 기록해 기존 사인파형 모델이 mean_p97에서 달성했던 자신의 최고 RTP 성능마저 추월합니다. 성능의 유의미한 저하는 mean_p99를 초과한 시점부터 관찰되며, mean_p99.5에서 완만한 감소(RTP F1 = 0.7988)를 보인 후 극단적 지점인 mean_p99.9에 이르러서야 terminal value(0.0606)로 급격히 수렴합니다. 이러한 대비는 제안된 시간 인지형 인코딩의 본질적 가치를 명확히 해줍니다. 임계값의 극단적 오설정(misspecification)으로부터 모델을 완벽히 보호해 주는 절대적인 방패는 아니지만(두 모델 모두 충분히 극단적인 임계값에서는 실패하므로), 성능 붕괴의 시작 시점을 기준 최적점 바로 다음 칸(사인파형: mean_p97 $\rightarrow$ mean_p99)에서 두 단계 뒤인 후방 지역(시간 인지형: mean_p99 $\rightarrow$ mean_p99.5 $\rightarrow$ mean_p99.9)으로 실질적으로 밀어내어 줌으로써 실제 현장 배포 시 임계값 미세 오차나 캘리브레이션 불확실성에 대응할 수 있는 물리적인 '안전 마진(safety margin)'을 대폭 확보해 줍니다. 우리는 이 결과를 바탕으로 전체 F1-score의 글로벌 피크 지점이면서 후방의 급격한 성능 단절 구역으로부터 충분한 안전거리가 확보된 안정 영역 내에 위치한 mean_p99 지점을 최종 제안 기법의 기준 작동 임계값으로 결정했습니다.
+The time-aware model exhibits qualitatively different behavior over the range relevant to deployment. Overall F1 continues to \emph{improve} through $P_{99}$ (0.9802, the global peak across all tested percentiles for either variant), with RTP F1 reaching 0.8683 -- exceeding the sinusoidal model's own peak RTP performance at $P_{97}$. Performance only begins to degrade beyond $P_{99}$, with a moderate decline at $P_{99.5}$ (RTP F1 = 0.7988) followed by a sharp collapse at $P_{99.9}$ (RTP F1 = 0.0606), comparable in magnitude to the sinusoidal model's terminal value (0.0207) at the same percentile. This comparison clarifies the nature of the improvement: time-aware encoding does not render the model immune to threshold misspecification -- both variants ultimately fail at sufficiently extreme thresholds -- but it shifts the onset of collapse from immediately beyond the selected threshold (sinusoidal: $P_{97}$ $\rightarrow$ $P_{99}$) to two percentile steps beyond it (time-aware: $P_{99}$ $\rightarrow$ $P_{99.5}$ $\rightarrow$ $P_{99.9}$), providing a materially larger safety margin against threshold miscalibration in deployment. We select $P_{99}$ as the operating threshold for the final proposed method, as it coincides with the empirical peak of the overall F1-threshold curve in Table~\ref{tab:threshold} and is comfortably within the stable region rather than adjacent to the subsequent collapse observed at $P_{99.9}$.
