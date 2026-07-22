@@ -90,7 +90,14 @@ In addition to byte-level content and delta, we incorporate inter-packet timing 
 mirroring the zero-initialization convention used for the delta sequence [Eq.~\eqref{eq:delta}]. The logarithmic compression $\log(1+|\cdot|)$ accounts for the wide dynamic range of Automotive Ethernet inter-arrival times, which span several orders of magnitude (microseconds to seconds) depending on traffic type and driving scenario; without this compression, occasional large inter-arrival gaps would dominate the learned representation. The IPI sequence is derived solely from packet capture timestamps and is independent of any upper-layer protocol parsing, preserving the protocol-agnostic nature of the proposed method.
 
 \noindent\textbf{Masking.}
-Prior to encoding, a packet-level binary mask $\mathbf{m} \in \{0, 1\}^{N}$ is sampled to determine which packets within the window are masked: each position $i \in \{1, \ldots, N\}$ is independently drawn as $m_i \sim \text{Bernoulli}(p_{\text{mask}})$ with $p_{\text{mask}} = 0.20$, so that approximately 20\% of the $N$ packets in each window are selected for masking. For each position where $m_i = 1$, the entire $L$-dimensional content vector $\mathbf{p}_i$ is replaced --- not with random values, but with a single shared, learned mask token $\mathbf{e}_{\text{mask}} \in \mathbb{R}^{L}$, initialized from $\mathcal{N}(0, 0.02^2)$ and updated during training via backpropagation:
+Prior to encoding, a packet-level binary mask $\mathbf{m} \in \{0, 1\}^{N}$ is sampled to 
+determine which packets within the window are masked: each position $i \in \{1, \ldots, N\}$ 
+is independently drawn as $m_i \sim \text{Bernoulli}(p_{\text{mask}})$ with $p_{\text{mask}} 
+= 0.20$, so that approximately 20\% of the $N$ packets in each window are selected for 
+masking. For each position where $m_i = 1$, the entire $L$-dimensional content vector 
+$\mathbf{p}_i$ is replaced with a single shared, learned mask token $\mathbf{e}_{\text{mask}} 
+\in \mathbb{R}^{L}$, initialized from $\mathcal{N}(0, 0.02^2)$ and updated during training 
+via backpropagation:
 \begin{equation}
     \tilde{\mathbf{p}}_i =
     \begin{cases}
@@ -100,7 +107,29 @@ Prior to encoding, a packet-level binary mask $\mathbf{m} \in \{0, 1\}^{N}$ is s
     \label{eq:mask}
 \end{equation}
 
-This design follows the masked autoencoding paradigm of BERT~\cite{devlin2019bert} and MAE~\cite{he2022masked}, where the \emph{location} of masking is randomized while the \emph{substituted value} is a single learnable embedding shared across all masked positions, rather than random noise. The delta input is computed from the original unmasked content [Eq.~\eqref{eq:delta}] and is not subject to masking, preserving the integrity of the variation signal. Similarly, the IPI sequence $\boldsymbol{\iota}$ [Eq.~\eqref{eq:ipi}] is left unmasked at every position, including $i$ with $m_i = 1$: only the byte-level content vector $\mathbf{p}_i$ is replaced by $\mathbf{e}_{\text{mask}}$, while the timing signal used to compute $\mathbf{P}_{\text{enc}}$ remains the true inter-packet interval. This mirrors standard practice in masked autoencoding architectures, where positional encodings are treated as always-visible structural context rather than maskable content; masking the timing signal itself would additionally confound the reconstruction objective, since the decoder would then have to infer both the missing content and the missing timing of a packet from a single shared mask token.
+Masked modeling architectures broadly fall into two paradigms, distinguished by \emph{where} 
+the mask token is introduced. BERT~\cite{devlin2019bert} substitutes masked positions with a 
+shared learnable placeholder and passes the full corrupted sequence directly to the encoder, 
+allowing self-attention to mix information across masked and unmasked positions; MAE~\cite{he2022masked} instead discards masked patches from the encoder input entirely and 
+reintroduces the mask token only at the decoder, so its encoder never observes a masked 
+position. We adopt the former, applying $\mathbf{e}_{\text{mask}}$ directly at the encoder 
+input as in Eq.~\eqref{eq:mask}: recovering the content of a masked packet requires the 
+attention mechanism to reference neighboring packets directly during encoding, which is only 
+possible if the full, mask-augmented sequence remains visible to the encoder throughout. We 
+further substitute every masked position through this single, consistent mechanism, without 
+introducing additional corruption types such as random-token substitution, so that the 
+reconstruction signal at each masked position is unambiguous and does not require the model 
+to first infer which corruption was applied to a given position, which supports reliable 
+reconstruction-error-based anomaly scoring at inference (Sec.~\ref{sec:scoring}).
+
+The delta input is computed from the original unmasked content [Eq.~\eqref{eq:delta}] and 
+remains unmasked throughout, preserving the integrity of the variation signal. Likewise, the 
+IPI sequence $\boldsymbol{\iota}$ [Eq.~\eqref{eq:ipi}] is left unmasked at every position, 
+including where $m_i = 1$: only the content vector $\mathbf{p}_i$ is replaced by 
+$\mathbf{e}_{\text{mask}}$, while the inter-packet timing used to compute 
+$\mathbf{P}_{\text{enc}}$ remains true. Masking the timing signal as well would confound the 
+reconstruction objective, forcing the decoder to infer both the missing content and the 
+missing timing of a packet from a single shared token.
 
 \subsection{Dual-Stream Encoder}
 \subsubsection{Content Stream: Transformer Encoder}
@@ -262,6 +291,6 @@ The detection threshold $\tau$ is determined from the reconstruction error distr
     \tau = \operatorname{Percentile}_{p}\!\left(\left\{s\!\left(\mathbf{X}^{(k)}\right)\right\}_{k=1}^{K}\right).
     \label{eq:threshold}
 \end{equation}
-A window is classified as an intrusion if $s(\mathbf{X}) > \tau$. We evaluate percentile values $p \in \{90, 95, 97, 99, 99.5, 99.9\}$ and select $p = 99$ based on the precision--recall tradeoff observed on the validation error distribution, which exhibits a sharp concentration of normal traffic errors near zero with a long right tail. The sensitivity of detection performance to the choice of $p$ is analyzed in Section~\ref{sec:threshold}.
+A window is classified as an intrusion if $s(\mathbf{X}) > \tau$. Note that $\tau$ itself is always computed from unlabeled normal traffic alone, regardless of how $p$ is chosen; what differs is only the criterion used to select $p$ from the candidate set $p \in \{95, 97, 99, 99.5, 99.9\}$, under one of two calibration strategies: \emph{labeled calibration}, which selects $p$ to maximize F1 on labeled validation attacks, or \emph{label-free calibration}, which selects $p$ to target a desired false-positive rate on normal traffic alone (e.g., $p=95$ for a 5\% FPR).
 
-We note that, while the model is trained in a fully unsupervised manner using only unlabeled normal traffic, identifying which percentile $p$ maximizes F1-score among the candidates above was performed using labeled attack data, consistent with common practice in unsupervised anomaly detection. In settings where labeled attacks are unavailable even for threshold calibration, $p$ may instead be selected using only the normal-traffic error distribution and a target false-positive rate (e.g., $p = 95$ for an intended 5\% FPR on validation traffic); Section~\ref{sec:threshold} reports detection performance under this fully label-free alternative, showing that it incurs only a modest reduction in F1-score relative to the labeled-calibration optimum.
+We adopt labeled calibration and select $p = 99$ based on the precision--recall tradeoff observed when the resulting $\tau$ is applied to labeled validation attacks, consistent with common practice in unsupervised anomaly detection. Section~\ref{sec:threshold} additionally reports detection performance under label-free calibration, showing a modest reduction in overall F1 but a more substantial reduction in detection of the RTP stream-replacement category specifically.
