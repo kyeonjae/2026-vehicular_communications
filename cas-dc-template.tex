@@ -96,13 +96,16 @@
 % (검색된 미검증 후보: 0000-0003-0612-7638 — 본인 것인지 확인 필요)
 \author[1]{Yeonjae Kang}
 \ead{kangyj1995@korea.ac.kr}
+\credit{Conceptualization, Methodology, Software, Validation, Formal analysis, Investigation, Data curation, Visualization, Writing -- original draft}
 
 \author[1]{Huy Kang Kim}[orcid=0000-0002-0760-8807]
 \ead{cenda@korea.ac.kr}
+\credit{Resources, Supervision, Writing -- review \& editing}
 
 \author[2]{Seonghoon Jeong}[orcid=0000-0001-5638-2851]
 \cormark[1]
 \ead{seonghoon@sookmyung.ac.kr}
+\credit{Conceptualization, Methodology, Supervision, Project administration, Writing -- review \& editing}
 
 % Address/affiliation
 \affiliation[1]{organization={School of Cybersecurity, Korea University},
@@ -191,6 +194,18 @@ Anomaly detection \sep Automotive Ethernet \sep In-vehicle network \sep Intrusio
 %% The Appendices part is started with the command \appendix;
 %% appendix sections are then done as normal sections
 %% \appendix
+
+% Renders the "CRediT authorship contribution statement" section from the
+% \credit{} declarations attached to each author above.
+\printcredits
+
+\section*{Declaration of competing interest}
+The authors declare that they have no known competing financial interests or personal
+relationships that could have appeared to influence the work reported in this paper.
+
+\section*{Data availability}
+The CarDS Automotive Ethernet dataset analyzed in this study is publicly available and is
+described by its authors in~\cite{hellemans2025cards}. No new data were generated in this study.
 
 %% Loading bibliography style file
 %\bibliographystyle{model1-num-names}
