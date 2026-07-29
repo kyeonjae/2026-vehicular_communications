@@ -1,0 +1,12 @@
+# LaTeX build artifacts (Overleaf regenerates these; they should not be versioned)
+cas-dc-template.abs
+cas-dc-template.aux
+cas-dc-template.bbl
+cas-dc-template.blg
+cas-dc-template.fdb_latexmk
+cas-dc-template.fls
+cas-dc-template.log
+cas-dc-template.out
+cas-dc-template.pdf
+cas-dc-template.synctex.gz
+overleaf.zip
