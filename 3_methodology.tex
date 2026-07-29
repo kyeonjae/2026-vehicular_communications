@@ -1,6 +1,6 @@
 \section{Methodology}
 \label{sec:methodology}
-\begin{figure*}[!t]
+\begin{figure*}[pos=t]
 \centering
 \includegraphics[width=\textwidth]{figs/architecture.pdf}
 \caption{Overview of the proposed dual-stream masked autoencoder. The content stream (Transformer) is conditioned on both the masked packet content and a time-aware positional encoding derived from inter-packet capture timestamps; the delta stream (residual 1D-CNN) processes inter-packet byte differences. The two streams are combined through delta-conditioned gated residual fusion, after which attention pooling produces a global latent vector $\mathbf{z}$ that, together with the fused sequence representation $\mathbf{F}$, conditions the decoder's reconstruction. At inference, the mean reconstruction error $s(\mathbf{X})$ is compared against a validation-derived threshold $\tau$ to flag intrusions. Equation numbers refer to their first appearance in Section~\ref{sec:methodology}.}
@@ -8,16 +8,16 @@
 \end{figure*}
 
 \subsection{Problem Formulation}
-\begin{figure}[]
+\begin{figure*}[pos=t]
 \centering
-\includegraphics[width=\columnwidth]{figs/proposed_ids_architecture.pdf}
+\includegraphics[width=\textwidth]{figs/proposed_ids_architecture.pdf}
 \caption{Deployment position and threat context for the proposed AE-IDS. The ADAS, chassis and safety, electric powertrain, and infotainment/connectivity domains exchange inter-domain traffic through the Automotive Ethernet backbone and central gateway, where the detector passively observes raw AE packets and their inter-packet byte differences. Markers illustrate the range of attacks possible against Automotive Ethernet, spanning three broad classes: (A) network access and reconnaissance, (B) application-layer exploitation, and (C) network-layer spoofing. Of these, Nmap-based scanning/spoofing (A) and RTP stream replacement (B) are evaluated in this work (Section~\ref{sec:experimental_setup}).}
 \label{fig:ae_deployment}
-\end{figure}
+\end{figure*}
 
 Figure~\ref{fig:ae_deployment} situates the proposed method: it is deployed at the central gateway, which aggregates inter-domain Automotive Ethernet traffic from a representative functional partition of a modern electric vehicle and offers a single, passive vantage point (e.g., via port mirroring) without participating in packet forwarding. This centralized position motivates a protocol-agnostic design that processes both raw packet bytes and their inter-packet differences, since the attack classes above manifest as changes to headers, addressing, or payload content that neither signal alone fully captures.
 
-We formulate Automotive Ethernet intrusion detection as an unsupervised anomaly detection problem. Let a raw packet be represented as a byte sequence $\mathbf{p}_i \in \{0, \ldots, 255\}^{L}$, where $L = 128$ denotes the maximum byte length, with zero-padding applied to packets shorter than $L$. Each byte value is normalized to $[0, 1]$ by dividing by 255. A traffic window is defined as a temporally ordered sequence of $N = 64$ consecutive packets, $\mathbf{X} = [\mathbf{p}_1, \mathbf{p}_2, \ldots, \mathbf{p}_N] \in \mathbb{R}^{N \times L}$, constructed using a sliding window of stride 1 over the full packet stream.
+We formulate Automotive Ethernet intrusion detection as an unsupervised anomaly detection problem. Let a raw packet be represented as a byte sequence $\mathbf{p}_i \in \{0, \ldots, 255\}^{L}$, where $L = 128$ denotes the maximum byte length, with zero-padding applied to packets shorter than $L$. Each byte value is normalized to $[0, 1]$ by dividing by 255. A traffic window is defined as a temporally ordered sequence of $N = 64$ consecutive packets, $\mathbf{X} = [\mathbf{p}_1, \mathbf{p}_2, \ldots, \mathbf{p}_N] \in \mathbb{R}^{N \times L}$, constructed using a sliding window of stride 1 within each capture trace, so that no window spans a trace boundary.
 
 A window-level binary label $y \in \{0, 1\}$ is assigned during evaluation only: $y = 1$ if at least one packet within the window is malicious, and $y = 0$ otherwise. The model is trained exclusively on windows drawn from normal traffic ($y = 0$) and receives no label information during training. The objective is to learn a function $f: \mathbb{R}^{N \times L} \rightarrow \mathbb{R}_{\geq 0}$ that assigns a scalar anomaly score to each window such that anomalous windows receive systematically higher scores than normal windows. At inference time, a window is classified as an intrusion if its anomaly score exceeds a threshold $\tau$ derived from the normal traffic distribution.
 
@@ -28,7 +28,7 @@ The proposed method consists of three components: (1) a dual-stream encoder that
 
 The dual-stream encoder processes the input window $\mathbf{X}$ through two parallel streams. The \textbf{content stream} applies a Transformer encoder to the raw byte content of each packet, modeling global inter-packet dependencies across the full window; rather than the conventional fixed sinusoidal positional encoding, the content stream is conditioned on the actual inter-packet timing recorded at capture time, allowing it to reason jointly about packet content and packet timing. The \textbf{delta stream} applies a residual 1D-CNN encoder to the inter-packet byte difference sequence, modeling per-byte temporal dynamics across consecutive packets. The content stream serves as the primary carrier of discriminative information, while the delta stream acts as a self-gated auxiliary signal that supplements it with local temporal cues. The outputs of both streams are fused through a delta-conditioned gated residual mechanism and aggregated via attention pooling to produce a compact latent vector $\mathbf{z}$. A conditioned sequence decoder then reconstructs the original packet content from the fused sequence representation and $\mathbf{z}$. Table~\ref{tab:notation} summarizes the notation used throughout this section.
 
-\begin{table}[!t]
+\begin{table}[!htbp]
 \centering
 \caption{Summary of notation.}
 \label{tab:notation}
@@ -48,6 +48,8 @@ $\mathbf{C}, \mathbf{D}$        & content-, delta-stream outputs \\
 $\mathbf{F}$                    & fused sequence representation \\
 $\bar{\mathbf{z}}, \mathbf{z}$  & pooled, refined latent vector \\
 $\hat{\mathbf{p}}_i$            & reconstructed content of packet $i$ \\
+$a(\cdot)$                      & attention-pooling scoring function \\
+$s(\mathbf{X})$                 & window anomaly score (mean reconstruction error) \\
 $\tau$                          & anomaly detection threshold \\
 \bottomrule
 \end{tabular}
@@ -114,14 +116,14 @@ further substitute every masked position through this single, consistent mechani
 introducing additional corruption types such as random-token substitution, so that the 
 reconstruction signal at each masked position is unambiguous and does not require the model 
 to first infer which corruption was applied to a given position, which supports reliable 
-reconstruction-error-based anomaly scoring at inference (Sec.~\ref{sec:scoring}).
+reconstruction-error-based anomaly scoring at inference (Section~\ref{sec:scoring}).
 
 The delta input is computed from the original unmasked content (Eq.~\ref{eq:delta}) and
 remains unmasked throughout, preserving the integrity of the variation signal. Likewise, the
 IPI sequence $\boldsymbol{\iota}$ (Eq.~\ref{eq:ipi}) is left unmasked at every position,
 including where $m_i = 1$: only the content vector $\mathbf{p}_i$ is replaced by 
 $\mathbf{e}_{\text{mask}}$, while the inter-packet timing used to compute 
-$\mathbf{P}_{\text{enc}}$ remains true. Masking the timing signal as well would confound the 
+$\mathbf{P}_{\text{enc}}$ is left intact. Masking the timing signal as well would confound the 
 reconstruction objective, forcing the decoder to infer both the missing content and the 
 missing timing of a packet from a single shared token.
 
@@ -135,7 +137,7 @@ The content stream models global inter-packet dependencies using a standard Tran
 
 where $\mathbf{W}_c \in \mathbb{R}^{L \times d_{\text{model}}}$ is the projection weight and $\text{Dropout}(\cdot)$ is applied at rate $p_{\text{drop}} = 0.1$. The same rate $p_{\text{drop}} = 0.1$ is used uniformly across the network: in Eq.~\eqref{eq:posenc} above, inside each Transformer encoder layer of Eq.~\eqref{eq:transformer}, and in the latent refinement step of Eq.~\eqref{eq:latent}. We consider two schemes for instantiating $\mathbf{P}_{\text{enc}}$, compared directly in the ablation study of Section~\ref{sec:ablation}.
 
-\noindent\textit{Sinusoidal positional encoding (baseline).} Following the conventional Transformer scheme~\cite{vaswani2017attention}, $\mathbf{P}_{\text{enc}} = \mathbf{P}$ is a fixed matrix computed from each packet's discrete rank $i \in \{1, \ldots, N\}$ within the window using the standard sine/cosine basis. This scheme encodes only the \emph{ordinal position} of a packet (0th, 1st, \ldots, 63rd) and is invariant to the actual elapsed time between packets.
+\noindent\textit{Sinusoidal positional encoding (baseline).} Following the conventional Transformer scheme~\cite{vaswani2017attention}, $\mathbf{P}_{\text{enc}} = \mathbf{P}$ is a fixed matrix computed from each packet's discrete rank $i \in \{1, \ldots, N\}$ within the window using the standard sine/cosine basis. This scheme encodes only the \emph{ordinal position} of a packet (1st, 2nd, \ldots, 64th) and is invariant to the actual elapsed time between packets.
 
 \noindent\textit{Time-aware positional encoding (proposed).} Automotive Ethernet attacks such as high-rate port scanning, packet replay, and flooding typically manifest as anomalous \emph{inter-arrival timing} rather than anomalous sequence rank, a signal that the sinusoidal scheme cannot represent. We therefore propose conditioning the positional signal directly on the IPI sequence $\boldsymbol{\iota}$ (Eq.~\ref{eq:ipi}) via a learnable projection:
 \begin{equation}
@@ -152,7 +154,7 @@ The projected sequence $\mathbf{H}^{(0)}_c$ is passed through $n_{\text{layers}}
     \label{eq:transformer}
 \end{equation}
 
-The Transformer encoder is suited to the content stream because inter-packet dependencies in Automotive Ethernet traffic are inherently global: the anomalous nature of a given packet may be most apparent in relation to temporally distant packets, such as when a scanning sequence targets non-consecutive port ranges across the window. This global receptive field also motivates injecting timing information specifically into the content stream rather than the delta stream: because self-attention computes interactions among all $N$ packets jointly, an anomalously short or long inter-packet interval can be weighed by attention relative to the timing of every other packet in the window. In contrast, the delta stream's convolutional kernels (size 3--5) only relate a packet to its immediate neighbors, limiting their ability to contextualize timing irregularities against the full window.
+The Transformer encoder is suited to the content stream because inter-packet dependencies in Automotive Ethernet traffic are inherently global: the anomalous nature of a given packet may be most apparent in relation to temporally distant packets, such as when a scanning sequence targets non-consecutive port ranges across the window. This global receptive field also motivates injecting timing information specifically into the content stream rather than the delta stream: because self-attention computes interactions among all $N$ packets jointly, an anomalously short or long inter-packet interval can be weighed by attention relative to the timing of every other packet in the window. In contrast, the delta stream's stacked convolutions (kernel size 3--5) reach a receptive field of 21 packets, so they relate a packet only to a local neighbourhood and cannot contextualize timing irregularities against the full 64-packet window.
 
 \subsubsection{Delta Stream: Residual CNN Encoder}
 The delta stream captures local temporal change patterns at each byte position using a residual one-dimensional convolutional neural network. Since each byte position across $N$ consecutive packets constitutes an independent temporal signal, the delta sequence $\mathbf{\Delta X} \in \mathbb{R}^{N \times L}$ from Eq.~\eqref{eq:delta} is transposed to $\mathbb{R}^{L \times N}$, treating each byte position as a channel and the packet index as the sequence axis. The transposed input is processed by a stack of residual convolutional blocks with filter progression $[128, 128, 128, C_{\text{last}}]$, $C_{\text{last}} = 64$:
@@ -221,7 +223,7 @@ The content representation $\mathbf{C}$ (Eq.~\ref{eq:transformer}) and delta rep
 
 where $\sigma(\cdot)$ denotes the sigmoid activation, $\mathbf{W}_g \in \mathbb{R}^{d_{\text{model}} \times d_{\text{model}}}$ is a learned weight matrix, and $\odot$ denotes element-wise multiplication. By conditioning the gate on the delta representation itself, the mechanism suppresses the delta stream's contribution at positions where inter-packet variation is uninformative, allowing the content stream to dominate when global sequential structure is the primary discriminative signal.
 
-This formulation reflects a primary--auxiliary design rationale rather than a symmetric two-stream fusion: the content representation $\mathbf{C}$ constitutes the principal discriminative signal, capturing the global structure of packet content across the window, while the delta representation $\mathbf{D}$ serves as a supplementary correction that injects local temporal variation into $\mathbf{C}$ only where such variation is itself informative. Because $\mathbf{D}$ already enters the fusion additively as a correction term in Eq.~\eqref{eq:fusion}, its own magnitude provides a natural, parameter-efficient proxy for how much auxiliary information it should contribute, without requiring a heavier gate jointly conditioned on $[\mathbf{C} \,\|\, \mathbf{D}]$. We adopt this asymmetric, delta-conditioned gating in place of symmetric content--delta gating to keep the fusion mechanism lightweight while preserving the content stream's role as the primary carrier of discriminative information throughout the encoder.
+This formulation is asymmetric rather than a symmetric two-stream fusion: the content representation $\mathbf{C}$ carries the window's global content structure and enters unmodulated, while the delta representation $\mathbf{D}$ is admitted as a gated correction that injects local temporal variation only where such variation is itself informative. The asymmetry is one of \emph{routing}, not of importance -- which stream dominates is attack-dependent, and the ablation of Section~\ref{sec:arch_ablation} shows the delta path to be indispensable for RTP stream replacement, where removing it drops that category's F1 from 0.7983 to 0.0384 on the shared backbone. Because $\mathbf{D}$ already enters the fusion additively as a correction term in Eq.~\eqref{eq:fusion}, its own magnitude provides a natural, parameter-efficient proxy for how much auxiliary information it should contribute, without requiring a heavier gate jointly conditioned on $[\mathbf{C} \,\|\, \mathbf{D}]$. We adopt this asymmetric, delta-conditioned gating in place of symmetric content--delta gating to keep the fusion mechanism lightweight while preserving the content stream's role as the primary carrier of discriminative information throughout the encoder.
 
 The fused sequence representation $\mathbf{F}$ serves as the input to both attention pooling (Section~\ref{sec:pooling}) and the decoder (Section~\ref{sec:decoder}).
 
@@ -229,11 +231,11 @@ The fused sequence representation $\mathbf{F}$ serves as the input to both atten
 \label{sec:pooling}
 The fused sequence representation $\mathbf{F}$ is aggregated into a fixed-dimensional pooled vector $\bar{\mathbf{z}} \in \mathbb{R}^{d_{\text{model}}}$ via attention pooling:
 \begin{equation}
-    \alpha_i = \frac{\exp\!\left(s(\mathbf{F}_i)\right)}{\sum_{j=1}^{N} \exp\!\left(s(\mathbf{F}_j)\right)}, \qquad
+    \alpha_i = \frac{\exp\!\left(a(\mathbf{F}_i)\right)}{\sum_{j=1}^{N} \exp\!\left(a(\mathbf{F}_j)\right)}, \qquad
     \bar{\mathbf{z}} = \sum_{i=1}^{N} \alpha_i \mathbf{F}_i,
     \label{eq:attnpool}
 \end{equation}
-where $s(\cdot): \mathbb{R}^{d_{\text{model}}} \rightarrow \mathbb{R}$ is a learned scoring function implemented as a two-layer MLP with a hidden dimension of $d_{\text{model}}/2 = 64$ and a Tanh nonlinearity. Attention pooling allows the model to assign non-uniform importance weights to individual packets when forming the global window representation, emphasizing packets that are most informative for characterizing normal traffic structure.
+where $a(\cdot): \mathbb{R}^{d_{\text{model}}} \rightarrow \mathbb{R}$ is a learned scoring function implemented as a two-layer multilayer perceptron (MLP) with a hidden dimension of $d_{\text{model}}/2 = 64$ and a Tanh nonlinearity. Attention pooling allows the model to assign non-uniform importance weights to individual packets when forming the global window representation, emphasizing packets that are most informative for characterizing normal traffic structure.
 
 The pooled vector $\bar{\mathbf{z}}$ is further refined into the final latent vector $\mathbf{z} \in \mathbb{R}^{d_{\text{model}}}$ through a feed-forward refinement block consisting of a linear projection, layer normalization, ReLU activation, and dropout:
 \begin{equation}
@@ -285,6 +287,6 @@ The detection threshold $\tau$ is determined from the reconstruction error distr
     \tau = \operatorname{Percentile}_{p}\!\left(\left\{s\!\left(\mathbf{X}^{(k)}\right)\right\}_{k=1}^{K}\right).
     \label{eq:threshold}
 \end{equation}
-A window is classified as an intrusion if $s(\mathbf{X}) > \tau$. Note that $\tau$ itself is always computed from unlabeled normal traffic alone, regardless of how $p$ is chosen; what differs is only the criterion used to select $p$ from the candidate set $p \in \{95, 97, 99, 99.5, 99.9\}$, under one of two calibration strategies: \emph{labeled calibration}, which selects $p$ to maximize F1 on labeled validation attacks, or \emph{label-free calibration}, which selects $p$ to target a desired false-positive rate on normal traffic alone (e.g., $p=95$ for a 5\% FPR).
+A window is classified as an intrusion if $s(\mathbf{X}) > \tau$. Note that $\tau$ itself is always computed from unlabeled normal traffic alone, regardless of how $p$ is chosen; what differs is only the criterion used to select $p$ from the candidate set $p \in \{95, 97, 99, 99.5, 99.9\}$, under one of two calibration strategies: \emph{labeled calibration}, which selects $p$ to maximize F1 on labeled attack traces, or \emph{label-free calibration}, which selects $p$ to target a desired false-positive rate on normal traffic alone (e.g., $p=95$ for a 5\% FPR).
 
-We adopt labeled calibration and select $p = 99$ based on the precision--recall tradeoff observed when the resulting $\tau$ is applied to labeled validation attacks, consistent with common practice in unsupervised anomaly detection. Section~\ref{sec:threshold} additionally reports detection performance under label-free calibration, showing a modest reduction in overall F1 but a more substantial reduction in detection of the RTP stream-replacement category specifically.
+We adopt labeled calibration and select $p = 99$ based on the precision--recall tradeoff observed when the resulting $\tau$ is applied to the labeled attack traces. The validation split contains benign traffic only, so these are the same 27 attack traces used for final reporting rather than a disjoint calibration set; this is consistent with common practice in unsupervised anomaly detection, and Section~\ref{sec:limitations} discusses what it does and does not affect. Section~\ref{sec:threshold} additionally reports detection performance under label-free calibration, showing a modest reduction in overall F1 but a more substantial reduction in detection of the RTP stream-replacement category specifically.

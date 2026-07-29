@@ -31,36 +31,29 @@
 \usepackage{algorithmic}
 \usepackage{adjustbox} % shrink-only table scaling; keeps a uniform table font size (see Sec. tables)
 \usepackage{subcaption}
-% Line numbers in the compiled PDF for the internal revision round;
-% remove \linenumbers below (or this block) before submission.
-% [switch] = pagewise machinery with running numbers and margin switching:
-% in twocolumn mode the side is resolved from the aux file per the line's
-% actual column (left column -> left margin, right column -> right margin),
-% so numbers never collide with text in the column gutter.
-\usepackage[switch]{lineno}
-% Review-only: widen the column gutter so the few boundary line numbers that
-% lineno resolves to the inner side (a twocolumn artifact at column tops)
-% sit in the gutter without touching either column's text.
-\addtolength{\columnsep}{14pt}
 
-% % --- Float placement tuning ---------------------------------------------
-% % The default LaTeX float limits (topnumber=2, totalnumber=3, etc.) are too
-% % restrictive for a paper with ~11 tables and 6 figures packed into a few
-% % pages of two-column text: floats that cannot find a slot get deferred
-% % indefinitely and all pile up together at the very end of the document.
-% % Loosening these limits, together with \FloatBarrier at section
-% % boundaries (see body text), keeps floats near their in-text citations.
-% \setcounter{topnumber}{9}
-% \setcounter{bottomnumber}{9}
-% \setcounter{totalnumber}{9}
-% \setcounter{dbltopnumber}{9}
-% \renewcommand{\topfraction}{0.95}
-% \renewcommand{\bottomfraction}{0.9}
-% \renewcommand{\textfraction}{0.05}
-% \renewcommand{\floatpagefraction}{0.5}
-% \renewcommand{\dbltopfraction}{0.95}
-% \renewcommand{\dblfloatpagefraction}{0.5}
-% \usepackage[authoryear,longnamesfirst]{natbib}
+% Transitional guard for the removed line-numbering build.
+% lineno.sty wrote ~1,400 \@LN{<line>}{<col>} entries into the .aux file.
+% Overleaf reuses its cached .aux across compiles, so the first build after
+% lineno was dropped reads those entries with \@LN no longer defined and
+% aborts with "Undefined control sequence". Absorbing them here lets that
+% build finish, after which the .aux is rewritten without them.
+% Safe to delete once the project has compiled cleanly.
+\makeatletter
+\providecommand{\@LN}[2]{}
+\makeatother
+
+% --- Float placement -------------------------------------------------------
+% The cas-dc class redefines the figure environment so that its optional
+% argument is a key-value list, not a LaTeX placement specifier: [!t] is read
+% as the CAS key "pos" and every standard float parameter is ignored. Figures
+% must therefore be positioned with pos=..., and each one below uses
+% pos=htbp so it can settle in the column where it is cited. Without this the
+% figures were deferred behind the 14 tables of Section 4 and printed after
+% the bibliography. pos=H is deliberately avoided: it forbids text flowing
+% past the float, which left large blanks at the foot of a column whenever a
+% figure did not fit in the space remaining. Tables place correctly on their
+% own and are left as they are.
 
 %%%Author macros
 \def\tsc#1{\csdef{#1}{\textsc{\lowercase{#1}}\xspace}}
@@ -87,13 +80,9 @@
 \shortauthors{Y.~Kang et~al.}
 
 % Main title of the paper
-% 대안 1: Protocol-Agnostic Intrusion Detection for Automotive Ethernet Using Dual-Stream Masked Autoencoding of Raw Packet Bytes  (raw bytes를 살리는 안)
-% 대안 2: Self-Supervised Dual-Stream Masked Autoencoder for Intrusion Detection in Automotive Ethernet  (짧은 안)
 \title[mode = title]{Time-Aware Dual-Stream Masked Autoencoder for Protocol-Agnostic Intrusion Detection in Automotive Ethernet}
 
 % First author
-% TODO(Yeonjae): ORCID를 만드셨으면 아래에 [orcid=...] 옵션으로 추가해 주세요.
-% (검색된 미검증 후보: 0000-0003-0612-7638 — 본인 것인지 확인 필요)
 \author[1]{Yeonjae Kang}[orcid=0000-0003-0612-7638]
 \ead{kangyj1995@korea.ac.kr}
 \credit{Conceptualization, Methodology, Software, Validation, Formal analysis, Investigation, Data curation, Visualization, Writing -- original draft}
@@ -136,7 +125,7 @@
 \item Transformer and CNN streams jointly model packet bytes and inter-packet deltas
 \item Trained only on normal traffic with no attack labels or protocol-specific parsing
 \item Time-aware positional encoding from packet timing widens the stable threshold range
-\item Achieves F1 0.9802 and AUROC 0.9976 across 27 real-vehicle attack captures
+\item Achieves F1 0.9808 and AUROC 0.9974 across 27 real-vehicle attack captures
 \item Presents the first anomaly detection study on the real-vehicle CarDS dataset
 \end{highlights}
 
@@ -150,8 +139,6 @@ Anomaly detection \sep Automotive Ethernet \sep In-vehicle network \sep Intrusio
 \end{keywords}
 
 \maketitle
-\linenumbers
-
 % Main text
 \input{1_introduction}
 \input{2_relatedwork}
