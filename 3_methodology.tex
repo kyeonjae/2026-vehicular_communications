@@ -3,7 +3,7 @@
 \begin{figure*}[pos=t]
 \centering
 \includegraphics[width=\textwidth]{figs/figure-architecture.pdf}
-\caption{Overview of the proposed dual-stream masked autoencoder. The content stream (Transformer) is conditioned on both the masked packet content and a time-aware positional encoding derived from inter-packet capture timestamps; the delta stream (residual 1D-CNN) processes inter-packet byte differences. The two streams are combined through delta-conditioned gated residual fusion, after which attention pooling produces a global latent vector $\mathbf{z}$ that, together with the fused sequence representation $\mathbf{F}$, conditions the decoder's reconstruction. At inference, the mean reconstruction error $s(\mathbf{X})$ is compared against a validation-derived threshold $\tau$ to flag intrusions. Equation numbers refer to their first appearance in Section~\ref{sec:methodology}.}
+\caption{Overview of the proposed dual-stream masked autoencoder. The content stream (Transformer) is conditioned on both the masked packet content and a time-aware positional encoding derived from inter-packet capture timestamps; the delta stream (residual 1D-CNN) processes inter-packet byte differences. The two streams are combined through delta-conditioned gated residual fusion, after which attention pooling produces a global latent vector $\mathbf{z}$ that, together with the fused sequence representation $\mathbf{F}$, conditions the decoder's reconstruction. At inference, the mean reconstruction error $s(\mathbf{X})$ is compared against a validation-derived threshold $\tau$ to flag intrusions.}
 \label{fig:architecture}
 \end{figure*}
 
