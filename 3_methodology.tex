@@ -82,7 +82,7 @@ In addition to byte-level content and delta, we incorporate inter-packet timing 
     \end{cases}
     \label{eq:ipi}
 \end{equation}
-mirroring the zero-initialization convention used for the delta sequence (Eq.~\ref{eq:delta}). The logarithmic compression $\log(1+|\cdot|)$ accounts for the wide dynamic range of Automotive Ethernet inter-arrival times, which span several orders of magnitude (microseconds to seconds) depending on traffic type and driving scenario; without this compression, occasional large inter-arrival gaps would dominate the learned representation. The IPI sequence is derived solely from packet capture timestamps and is independent of any upper-layer protocol parsing, preserving the protocol-agnostic nature of the proposed method.
+mirroring the zero-initialization convention used for the delta sequence (Eq.~\eqref{eq:delta}). The logarithmic compression $\log(1+|\cdot|)$ accounts for the wide dynamic range of Automotive Ethernet inter-arrival times, which span several orders of magnitude (microseconds to seconds) depending on traffic type and driving scenario; without this compression, occasional large inter-arrival gaps would dominate the learned representation. The IPI sequence is derived solely from packet capture timestamps and is independent of any upper-layer protocol parsing, preserving the protocol-agnostic nature of the proposed method.
 
 \noindent\textbf{Masking.}
 Prior to encoding, a packet-level binary mask $\mathbf{m} \in \{0, 1\}^{N}$ is sampled to 
@@ -117,9 +117,9 @@ reconstruction signal at each masked position is unambiguous and does not requir
 to first infer which corruption was applied to a given position, which supports reliable 
 reconstruction-error-based anomaly scoring at inference (Section~\ref{sec:scoring}).
 
-The delta input is computed from the original unmasked content (Eq.~\ref{eq:delta}) and
+The delta input is computed from the original unmasked content (Eq.~\eqref{eq:delta}) and
 remains unmasked throughout, preserving the integrity of the variation signal. Likewise, the
-IPI sequence $\boldsymbol{\iota}$ (Eq.~\ref{eq:ipi}) is left unmasked at every position,
+IPI sequence $\boldsymbol{\iota}$ (Eq.~\eqref{eq:ipi}) is left unmasked at every position,
 including where $m_i = 1$: only the content vector $\mathbf{p}_i$ is replaced by 
 $\mathbf{e}_{\text{mask}}$, while the inter-packet timing used to compute 
 $\mathbf{P}_{\text{enc}}$ is left intact. Masking the timing signal as well would confound the 
@@ -133,11 +133,11 @@ The content stream models global inter-packet dependencies using a standard Tran
     \mathbf{H}^{(0)}_c = \text{Dropout}\!\left( \tilde{\mathbf{X}}\mathbf{W}_c + \mathbf{b}_c + \mathbf{P}_{\text{enc}} \right) \in \mathbb{R}^{N \times d_{\text{model}}},
     \label{eq:posenc}
 \end{equation}
-Here, $\text{Dropout}(\cdot)$ is applied at rate $p_{\text{drop}} = 0.1$, and $\mathbf{W}_c \in \mathbb{R}^{L \times d_{\text{model}}}$ is the projection weight. The same rate $p_{\text{drop}} = 0.1$ is used uniformly across the network: in Eq.~\eqref{eq:posenc} above, inside each Transformer encoder layer of Eq.~\eqref{eq:transformer}, and in the latent refinement step of Eq.~\eqref{eq:latent}. We consider two schemes for instantiating $\mathbf{P}_{\text{enc}}$, compared directly in the ablation study of Section~\ref{sec:ablation}.
+Here, $\text{Dropout}(\cdot)$ is applied at rate $p_{\text{drop}} = 0.1$, and $\mathbf{W}_c \in \mathbb{R}^{L \times d_{\text{model}}}$ is the projection weight. This same rate is used uniformly across the network: in Eq.~\eqref{eq:posenc} above, inside each Transformer encoder layer of Eq.~\eqref{eq:transformer}, and in the latent refinement step of Eq.~\eqref{eq:latent}. We consider two schemes for instantiating $\mathbf{P}_{\text{enc}}$, compared directly in the ablation study of Section~\ref{sec:ablation}.
 
 \noindent\textit{Sinusoidal positional encoding (baseline).} Following the conventional Transformer scheme~\cite{vaswani2017attention}, $\mathbf{P}_{\text{enc}} = \mathbf{P}$ is a fixed matrix computed from each packet's discrete rank $i \in \{1, \ldots, N\}$ within the window using the standard sine/cosine basis. This scheme encodes only the \emph{ordinal position} of a packet (1st, 2nd, \ldots, 64th) and is invariant to the actual elapsed time between packets.
 
-\noindent\textit{Time-aware positional encoding (proposed).} Automotive Ethernet attacks such as high-rate port scanning, packet replay, and flooding typically manifest as anomalous \emph{inter-arrival timing} rather than anomalous sequence rank, a signal that the sinusoidal scheme cannot represent. We therefore propose conditioning the positional signal directly on the IPI sequence $\boldsymbol{\iota}$ (Eq.~\ref{eq:ipi}) via a learnable projection:
+\noindent\textit{Time-aware positional encoding (proposed).} Automotive Ethernet attacks such as high-rate port scanning, packet replay, and flooding typically manifest as anomalous \emph{inter-arrival timing} rather than anomalous sequence rank, a signal that the sinusoidal scheme cannot represent. We therefore propose conditioning the positional signal directly on the IPI sequence $\boldsymbol{\iota}$ (Eq.~\eqref{eq:ipi}) via a learnable projection:
 \begin{equation}
     \mathbf{P}_{\text{enc}} = \mathbf{T} =
     \text{GELU}\!\left(\boldsymbol{\iota}\mathbf{W}_{t_1} + \mathbf{b}_{t_1}\right)\mathbf{W}_{t_2} + \mathbf{b}_{t_2},
@@ -174,7 +174,7 @@ where $\text{Conv}_1^{(l)}, \text{Conv}_2^{(l)}$ are the block's two 1D convolut
     \label{eq:deltaproj}
 \end{equation}
 where $\mathbf{W}_d \in \mathbb{R}^{C_{\text{last}} \times d_{\text{model}}}$ and $\mathbf{b}_d \in \mathbb{R}^{d_{\text{model}}}$.
-This design allows the CNN to independently track how each byte position evolves over the packet sequence. By applying convolutional kernels along the packet axis with a local receptive field, the model efficiently detects position-specific anomalies --- such as irregular fluctuations in byte offsets corresponding to source addresses, port numbers, or RTP sequence fields --- that manifest as abrupt local deviations in the delta domain.
+This design allows the CNN to independently track how each byte position evolves over the packet sequence. By applying convolutional kernels along the packet axis with a local receptive field, the model efficiently detects position-specific anomalies---such as irregular fluctuations in byte offsets corresponding to source addresses, port numbers, or RTP sequence fields---that manifest as abrupt local deviations in the delta domain.
 
 \begin{algorithm}[!t]
 \caption{Self-Supervised Dual-Stream Masked Reconstruction Training}
@@ -188,9 +188,9 @@ This design allows the CNN to independently track how each byte position evolves
     \FOR{each mini-batch $\{\mathbf{X}^{(k)}\}$ from training set}
         \STATE Compute delta sequence $\mathbf{\Delta X}^{(k)}$ via Eq.~\eqref{eq:delta} and IPI sequence $\boldsymbol{\iota}^{(k)}$ via Eq.~\eqref{eq:ipi}
         \STATE Sample packet-level mask $\mathbf{m}^{(k)} \sim \text{Bernoulli}(p_{\text{mask}})$ and apply Eq.~\eqref{eq:mask}
-        \STATE Encode content stream $\mathbf{C}$ (Eqs.~\ref{eq:posenc}--\ref{eq:transformer}, with $\mathbf{P}_{\text{enc}} = \mathbf{T}$ from Eq.~\eqref{eq:timepe}) and delta stream $\mathbf{D}$ (Eq.~\ref{eq:deltaproj})
-        \STATE Fuse streams into $\mathbf{F}$ via gated residual fusion (Eqs.~\ref{eq:gate}--\ref{eq:fusion})
-        \STATE Compute latent vector $\mathbf{z}$ via attention pooling and refinement (Eqs.~\ref{eq:attnpool}--\ref{eq:latent})
+        \STATE Encode content stream $\mathbf{C}$ (Eqs.~\eqref{eq:posenc}--\eqref{eq:transformer}, with $\mathbf{P}_{\text{enc}} = \mathbf{T}$ from Eq.~\eqref{eq:timepe}) and delta stream $\mathbf{D}$ (Eq.~\eqref{eq:deltaproj})
+        \STATE Fuse streams into $\mathbf{F}$ via gated residual fusion (Eqs.~\eqref{eq:gate}--\eqref{eq:fusion})
+        \STATE Compute latent vector $\mathbf{z}$ via attention pooling and refinement (Eqs.~\eqref{eq:attnpool}--\eqref{eq:latent})
         \STATE Decode reconstruction $\hat{\mathbf{X}}^{(k)}$ via Eq.~\eqref{eq:decoder}
         \STATE Compute loss $\mathcal{L}$ via Eq.~\eqref{eq:loss}; update $\theta$ with AdamW
     \ENDFOR
@@ -207,7 +207,7 @@ This design allows the CNN to independently track how each byte position evolves
 
 \subsubsection{Gated Residual Fusion}
 \label{sec:fusion}
-The content representation $\mathbf{C}$ (Eq.~\ref{eq:transformer}) and delta representation $\mathbf{D}$ (Eq.~\ref{eq:deltaproj}) are combined through a delta-conditioned gated residual mechanism. A gate is computed from the delta representation alone and used to modulate its contribution to the content representation:
+The content representation $\mathbf{C}$ (Eq.~\eqref{eq:transformer}) and delta representation $\mathbf{D}$ (Eq.~\eqref{eq:deltaproj}) are combined through a delta-conditioned gated residual mechanism. A gate is computed from the delta representation alone and used to modulate its contribution to the content representation:
 \begin{equation}
     \mathbf{g} = \sigma\!\left(\mathbf{D}\mathbf{W}_g + \mathbf{b}_g\right) \in \mathbb{R}^{N \times d_{\text{model}}},
     \label{eq:gate}
@@ -218,7 +218,7 @@ The content representation $\mathbf{C}$ (Eq.~\ref{eq:transformer}) and delta rep
 \end{equation}
 Here, $\sigma(\cdot)$ denotes the sigmoid activation and $\odot$ denotes element-wise multiplication, with the learned weight matrix $\mathbf{W}_g \in \mathbb{R}^{d_{\text{model}} \times d_{\text{model}}}$ used only within the gate. By conditioning the gate on the delta representation itself, the mechanism suppresses the delta stream's contribution at positions where inter-packet variation is uninformative, allowing the content stream to dominate when global sequential structure is the primary discriminative signal.
 
-This formulation is asymmetric rather than a symmetric two-stream fusion: the content representation $\mathbf{C}$ carries the window's global content structure and enters unmodulated, while the delta representation $\mathbf{D}$ is admitted as a gated correction that injects local temporal variation only where such variation is itself informative. The asymmetry is one of \emph{routing}, not of importance -- which stream dominates is attack-dependent, and the ablation of Section~\ref{sec:arch_ablation} shows the delta path to be indispensable for RTP stream replacement, where removing it drops that category's F1 from 0.7983 to 0.0384 on the shared backbone. Because $\mathbf{D}$ already enters the fusion additively as a correction term in Eq.~\eqref{eq:fusion}, its own magnitude provides a natural, parameter-efficient proxy for how much of it should be admitted at each position, without requiring a heavier gate jointly conditioned on $[\mathbf{C} \,\|\, \mathbf{D}]$. We therefore adopt this asymmetric, delta-conditioned gating in place of symmetric content--delta gating: it keeps the fusion mechanism lightweight while leaving the content stream's representation intact through the encoder.
+This formulation is asymmetric rather than a symmetric two-stream fusion: the content representation $\mathbf{C}$ carries the window's global content structure and enters unmodulated, while the delta representation $\mathbf{D}$ is admitted as a gated correction that injects local temporal variation only where such variation is itself informative. The asymmetry is one of \emph{routing}, not of importance---which stream dominates is attack-dependent, and the ablation of Section~\ref{sec:arch_ablation} shows the delta path to be indispensable for RTP stream replacement, where removing it drops that category's F1 from 0.7983 to 0.0384 on the shared backbone. Because $\mathbf{D}$ already enters the fusion additively as a correction term in Eq.~\eqref{eq:fusion}, its own magnitude provides a natural, parameter-efficient proxy for how much of it should be admitted at each position, without requiring a heavier gate jointly conditioned on $[\mathbf{C} \,\|\, \mathbf{D}]$. We therefore adopt this asymmetric, delta-conditioned gating in place of symmetric content--delta gating: it keeps the fusion mechanism lightweight while leaving the content stream's representation intact through the encoder.
 
 The fused sequence representation $\mathbf{F}$ serves as the input to both attention pooling (Section~\ref{sec:pooling}) and the decoder (Section~\ref{sec:decoder}).
 
@@ -241,7 +241,7 @@ where $\mathbf{W}_z \in \mathbb{R}^{d_{\text{model}} \times d_{\text{model}}}$.
 
 \subsection{Conditioned Sequence Decoder}
 \label{sec:decoder}
-The decoder reconstructs the original (unmasked) packet content from the fused sequence representation $\mathbf{F}$ (Eq.~\ref{eq:fusion}), conditioned on the global latent vector $\mathbf{z}$ (Eq.~\ref{eq:latent}). For each position $i$, the latent vector is broadcast and concatenated with the local sequence representation:
+The decoder reconstructs the original (unmasked) packet content from the fused sequence representation $\mathbf{F}$ (Eq.~\eqref{eq:fusion}), conditioned on the global latent vector $\mathbf{z}$ (Eq.~\eqref{eq:latent}). For each position $i$, the latent vector is broadcast and concatenated with the local sequence representation:
 \begin{equation}
     \hat{\mathbf{p}}_i = \text{GELU}\!\left(\left[\mathbf{F}_i \,\|\, \mathbf{z}\right] \mathbf{W}_1 + \mathbf{b}_1\right) \mathbf{W}_2 + \mathbf{b}_2,
     \label{eq:decoder}
